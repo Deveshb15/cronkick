@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { jitterMs, minIntervalMinutes, planSlots } from '../src/slots.js';
+import { jitterMs, minIntervalMinutes, planSlots } from '../src/slots.ts';
 
 const at = (s: string) => new Date(s);
 const utc = (cron: string) => ({ cron, tz: 'UTC' });

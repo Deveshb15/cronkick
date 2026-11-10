@@ -1,5 +1,5 @@
-import type { Db } from './db.js';
-import { planSlots } from './slots.js';
+import type { Db } from './db.ts';
+import { planSlots } from './slots.ts';
 
 export const HORIZON_MS = 2 * 60 * 60_000;
 

@@ -1,6 +1,6 @@
 import { parse } from 'yaml';
-import { parseMarkers, type Flag, type Marker } from './markers.js';
-import { minIntervalMinutes } from './slots.js';
+import { parseMarkers, type Flag, type Marker } from './markers.ts';
+import { minIntervalMinutes } from './slots.ts';
 
 export type WorkflowCheck = { markers: Marker[]; flags: Flag[]; suggestedDiff: string | null };
 

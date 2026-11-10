@@ -1,4 +1,4 @@
-import type { Db } from './db.js';
+import type { Db } from './db.ts';
 
 
 type Run = { id: number; workflow_id: number; event: string; html_url: string; status: string; conclusion: string | null; created_at: string };

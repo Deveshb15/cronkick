@@ -1,10 +1,10 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
-import type { Db } from '../src/db.js';
-import { handleEvent, verifySignature } from '../src/webhooks.js';
-import { dispatchTick as queue, drain } from '../src/dispatcher.js';
-import { linkRun } from '../src/runs.js';
-import { fakeDeps } from './fakes.js';
-import { freshDb } from './helpers.js';
+import type { Db } from '../src/db.ts';
+import { handleEvent, verifySignature } from '../src/webhooks.ts';
+import { dispatchTick as queue, drain } from '../src/dispatcher.ts';
+import { linkRun } from '../src/runs.ts';
+import { fakeDeps } from './fakes.ts';
+import { freshDb } from './helpers.ts';
 import { createHmac } from 'node:crypto';
 
 let db: Db;
@@ -130,7 +130,7 @@ test('daily reconcile marks installations GitHub no longer lists as removed', as
   const s = setup();
   await s.install();
   s.gh.installations = [];
-  const { reconcileAll } = await import('../src/sync.js');
+  const { reconcileAll } = await import('../src/sync.ts');
   await reconcileAll(s.deps);
   expect(await count(`SELECT count(*)::int AS n FROM installations WHERE removed`)).toBe(1);
 });

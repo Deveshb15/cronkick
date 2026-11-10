@@ -5,3 +5,5 @@ node_modules
 .env.*
 !.env.example
 *.crt
+web/.next
+*.tsbuildinfo

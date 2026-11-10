@@ -1,16 +1,15 @@
 import { serve } from '@hono/node-server';
-import { loadConfig } from './config.js';
-import { createDb, migrate } from './db.js';
-import type { Deps } from './deps.js';
-import { githubApp, realGitHub } from './github.js';
-import { resendMailer } from './mailer.js';
-import { dispatchTick, drain } from './dispatcher.js';
-import { materialize, settle } from './maintenance.js';
-import { sendSlotAlerts } from './alerts.js';
-import { reconcileAll } from './sync.js';
-import { collectProbes } from './probe/collector.js';
-import { githubOAuth } from './web/auth.js';
-import { webApp } from './web/app.js';
+import { loadConfig } from './config.ts';
+import { createDb, migrate } from './db.ts';
+import type { Deps } from './deps.ts';
+import { githubApp, realGitHub } from './github.ts';
+import { resendMailer } from './mailer.ts';
+import { dispatchTick, drain } from './dispatcher.ts';
+import { materialize, settle } from './maintenance.ts';
+import { sendSlotAlerts } from './alerts.ts';
+import { reconcileAll } from './sync.ts';
+import { collectProbes } from './probe/collector.ts';
+import { webApp } from './web/app.ts';
 
 const cfg = loadConfig();
 const db = createDb(cfg.databaseUrl);
@@ -18,7 +17,7 @@ await migrate(db);
 
 const gh = githubApp(cfg);
 const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl };
-const app = webApp(deps, { webhookSecret: cfg.webhookSecret, sessionSecret: cfg.sessionSecret, appSlug: cfg.appSlug, contactEmail: cfg.contactEmail, oauth: githubOAuth(gh, `${cfg.baseUrl}/callback`) });
+const app = webApp(deps, { webhookSecret: cfg.webhookSecret });
 const server = serve({ fetch: app.fetch, port: cfg.port }, (i) => console.log(`cronkick listening on :${i.port}`));
 
 let stopping = false;

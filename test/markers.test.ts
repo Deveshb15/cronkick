@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { parseMarkers } from '../src/markers.js';
+import { parseMarkers } from '../src/markers.ts';
 
 const wf = (body: string) => `name: nightly\non:\n${body}\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n`;
 

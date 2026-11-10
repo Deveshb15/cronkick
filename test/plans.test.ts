@@ -1,9 +1,9 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
-import type { Db } from '../src/db.js';
-import { syncInstallation, upsertInstallation, afterChange } from '../src/sync.js';
-import { sendSlotAlerts } from '../src/alerts.js';
-import { fakeDeps } from './fakes.js';
-import { freshDb, seed } from './helpers.js';
+import type { Db } from '../src/db.ts';
+import { syncInstallation, upsertInstallation, afterChange } from '../src/sync.ts';
+import { sendSlotAlerts } from '../src/alerts.ts';
+import { fakeDeps } from './fakes.ts';
+import { freshDb, seed } from './helpers.ts';
 
 let db: Db;
 beforeEach(async () => { db?.end(); db = await freshDb(); });

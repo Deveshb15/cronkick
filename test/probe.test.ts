@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { assignRuns, lateness } from '../src/probe/stats.js';
+import { assignRuns, lateness } from '../src/probe/stats.ts';
 
 test('p50 and p95 by nearest rank', () => {
   const s = lateness([60, 120, 180, 600, 2400], 5);

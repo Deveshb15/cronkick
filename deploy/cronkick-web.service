@@ -1,0 +1,23 @@
+# /etc/systemd/system/cronkick-web.service — the Next.js site and dashboard on :3000.
+# It proxies /webhooks and /healthz to the worker (cronkick.service) on :3001.
+[Unit]
+Description=Cronkick web (Next.js)
+After=network-online.target cronkick.service
+Wants=network-online.target
+
+[Service]
+User=cronkick
+WorkingDirectory=/opt/cronkick
+EnvironmentFile=/etc/cronkick/env
+Environment=NODE_ENV=production
+ExecStart=/opt/cronkick/node_modules/.bin/next start web -p 3000
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/cronkick/web/.next
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

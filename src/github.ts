@@ -20,8 +20,8 @@ export class DispatchTimeout extends Error {}
 
 const DISPATCH_TIMEOUT_MS = 10_000;
 
-export function githubApp(cfg: { appId: string; privateKey: string; clientId: string; clientSecret: string }): App {
-  return new App({ appId: cfg.appId, privateKey: cfg.privateKey, oauth: { clientId: cfg.clientId, clientSecret: cfg.clientSecret } });
+export function githubApp(cfg: { appId: string; privateKey: string }): App {
+  return new App({ appId: cfg.appId, privateKey: cfg.privateKey });
 }
 
 function retryAfter(headers: Record<string, any>): number | undefined {

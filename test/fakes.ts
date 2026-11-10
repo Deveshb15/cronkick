@@ -1,7 +1,7 @@
-import type { Deps } from '../src/deps.js';
-import type { Db } from '../src/db.js';
-import { DispatchTimeout, type DispatchResult, type GitHub, type RepoInfo, type WorkflowInfo } from '../src/github.js';
-import type { Mail } from '../src/mailer.js';
+import type { Deps } from '../src/deps.ts';
+import type { Db } from '../src/db.ts';
+import { DispatchTimeout, type DispatchResult, type GitHub, type RepoInfo, type WorkflowInfo } from '../src/github.ts';
+import type { Mail } from '../src/mailer.ts';
 
 export class FakeGitHub implements GitHub {
   repos: RepoInfo[] = [];

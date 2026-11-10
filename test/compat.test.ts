@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { checkWorkflow } from '../src/compat.js';
+import { checkWorkflow } from '../src/compat.ts';
 
 const steps = `jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n`;
 const msgs = (text: string, floor = 5) => checkWorkflow(text, floor).flags.map((f) => f.message);

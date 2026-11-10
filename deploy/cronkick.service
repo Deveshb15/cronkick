@@ -1,6 +1,6 @@
 # /etc/systemd/system/cronkick.service
 [Unit]
-Description=Cronkick (GitHub Actions on-time cron)
+Description=Cronkick worker (scheduler, webhooks) on :3001
 After=network-online.target
 Wants=network-online.target
 

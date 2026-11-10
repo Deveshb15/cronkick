@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { Deps } from './deps.js';
-import { linkRun } from './runs.js';
-import { pauseRepos, setInstallationState, syncInstallation, syncRepo, upsertInstallation } from './sync.js';
+import type { Deps } from './deps.ts';
+import { linkRun } from './runs.ts';
+import { pauseRepos, setInstallationState, syncInstallation, syncRepo, upsertInstallation } from './sync.ts';
 
 /** X-Hub-Signature-256 check over the raw body (R1). */
 export function verifySignature(secret: string, body: string, header: string | undefined): boolean {

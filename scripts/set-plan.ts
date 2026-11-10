@@ -1,11 +1,11 @@
 // Billing stub: set an installation's plan by hand until Polar/Dodo is wired up.
 // Usage: npm run plan:set -- <installation id | account login> <free|pro>
 // Re-reads the installation's workflow files, because the allowed interval depends on the plan.
-import { loadConfig } from '../src/config.js';
-import { createDb } from '../src/db.js';
-import { githubApp, realGitHub } from '../src/github.js';
-import { resendMailer } from '../src/mailer.js';
-import { syncInstallation } from '../src/sync.js';
+import { loadConfig } from '../src/config.ts';
+import { createDb } from '../src/db.ts';
+import { githubApp, realGitHub } from '../src/github.ts';
+import { resendMailer } from '../src/mailer.ts';
+import { syncInstallation } from '../src/sync.ts';
 
 const [who, plan] = process.argv.slice(2);
 if (!who || !['free', 'pro'].includes(plan)) {

@@ -1,4 +1,4 @@
-import { createDb, migrate, type Db } from '../src/db.js';
+import { createDb, migrate, type Db } from '../src/db.ts';
 
 /** Fresh schema for a test file. */
 export async function freshDb(): Promise<Db> {

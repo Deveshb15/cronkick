@@ -1,4 +1,4 @@
-import type { Db } from './db.js';
+import type { Db } from './db.ts';
 
 export type PlanName = 'free' | 'pro';
 export const PLANS = {

@@ -1,5 +1,5 @@
-import type { Deps } from './deps.js';
-import { DispatchTimeout, type DispatchResult } from './github.js';
+import type { Deps } from './deps.ts';
+import { DispatchTimeout, type DispatchResult } from './github.ts';
 
 const LEASE_MS = 60_000;
 /** A call takes at most 10 s; don't start one with less lease than this left. */

@@ -1,4 +1,4 @@
-import { createDb, migrate } from '../src/db.js';
+import { createDb, migrate } from '../src/db.ts';
 
 const db = createDb();
 const applied = await migrate(db);

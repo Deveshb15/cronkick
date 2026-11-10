@@ -1,5 +1,5 @@
-import type { Db } from '../db.js';
-import { assignRuns, dueTimes, GRACE_MS, lateness, PROBE_WORKFLOWS, type Lateness } from './stats.js';
+import type { Db } from '../db.ts';
+import { assignRuns, dueTimes, GRACE_MS, lateness, PROBE_WORKFLOWS, type Lateness } from './stats.ts';
 
 const WINDOW_MS = 7 * 24 * 60 * 60_000;
 

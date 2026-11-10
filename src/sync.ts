@@ -1,10 +1,10 @@
-import { tx } from './db.js';
-import type { Deps } from './deps.js';
-import { checkWorkflow, type WorkflowCheck } from './compat.js';
-import { applyLimits, PLANS, planOf } from './plans.js';
-import { refreshSlots } from './maintenance.js';
-import { sendLimitNotice } from './alerts.js';
-import type { RepoInfo } from './github.js';
+import { tx } from './db.ts';
+import type { Deps } from './deps.ts';
+import { checkWorkflow, type WorkflowCheck } from './compat.ts';
+import { applyLimits, PLANS, planOf } from './plans.ts';
+import { refreshSlots } from './maintenance.ts';
+import { sendLimitNotice } from './alerts.ts';
+import type { RepoInfo } from './github.ts';
 
 export async function upsertInstallation(deps: Deps, inst: { id: number; account: { login: string; type: string } }) {
   await deps.db.query(

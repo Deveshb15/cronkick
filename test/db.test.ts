@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { migrate, type Db } from '../src/db.js';
-import { ConfigError, dbUrl } from '../src/config.js';
-import { freshDb, seed } from './helpers.js';
+import { migrate, type Db } from '../src/db.ts';
+import { ConfigError, dbUrl } from '../src/config.ts';
+import { freshDb, seed } from './helpers.ts';
 
 let db: Db;
 beforeAll(async () => { db = await freshDb(); });
@@ -40,7 +40,7 @@ test('two servers migrating at once both succeed', async () => {
 
 test('a GitHub-style PKCS#1 App key can sign the App JWT', async () => {
   const { generateKeyPairSync } = await import('node:crypto');
-  const { pkcs8 } = await import('../src/config.js');
+  const { pkcs8 } = await import('../src/config.ts');
   const { App } = await import('@octokit/app');
   const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
   expect(pem).toContain('BEGIN RSA PRIVATE KEY');

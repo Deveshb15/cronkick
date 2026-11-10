@@ -1,10 +1,10 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
-import type { Db } from '../src/db.js';
-import { claim, dispatchTick as queue, drain } from '../src/dispatcher.js';
-import { materialize, settle } from '../src/maintenance.js';
-import { DispatchTimeout, realGitHub } from '../src/github.js';
-import { fakeDeps } from './fakes.js';
-import { freshDb, seed } from './helpers.js';
+import type { Db } from '../src/db.ts';
+import { claim, dispatchTick as queue, drain } from '../src/dispatcher.ts';
+import { materialize, settle } from '../src/maintenance.ts';
+import { DispatchTimeout, realGitHub } from '../src/github.ts';
+import { fakeDeps } from './fakes.ts';
+import { freshDb, seed } from './helpers.ts';
 
 let db: Db;
 const dispatchTick = async (d: Parameters<typeof queue>[0]) => { const n = await queue(d); await drain(d); return n; };

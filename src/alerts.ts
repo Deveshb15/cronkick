@@ -1,4 +1,4 @@
-import type { Deps } from './deps.js';
+import type { Deps } from './deps.ts';
 
 async function recipient(deps: Deps, installationId: number): Promise<string | null> {
   const { rows } = await deps.db.query('SELECT alert_email FROM installations WHERE id = $1', [installationId]);

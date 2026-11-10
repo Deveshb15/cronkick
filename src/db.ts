@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { readdir, readFile } from 'node:fs/promises';
-import { dbUrl } from './config.js';
+import { dbUrl } from './config.ts';
 
 // Return bigint columns (GitHub ids) as JS numbers; GitHub ids fit in 2^53.
 pg.types.setTypeParser(20, Number);
