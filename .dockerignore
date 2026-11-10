@@ -1,0 +1,7 @@
+node_modules
+.env
+*.pem
+.git
+test
+docs
+probe

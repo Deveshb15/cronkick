@@ -8,10 +8,11 @@ import { PLANS, planOf } from '../plans.js';
 import { probeReport } from '../probe/collector.js';
 import { clearSession, readSession, writeSession, type OAuth, type Session } from './auth.js';
 import { latenessPage, page, slotTable, stateCounts } from './views.js';
+import { privacyPage, termsPage } from './legal.js';
 
 const MAX_ROWS = 500;
 
-export type WebOpts = { webhookSecret: string; sessionSecret: string; oauth: OAuth; appSlug: string };
+export type WebOpts = { webhookSecret: string; sessionSecret: string; oauth: OAuth; appSlug: string; contactEmail: string };
 
 export function webApp(deps: Deps, opts: WebOpts) {
   const app = new Hono<{ Variables: { session: Session } }>();
@@ -62,6 +63,9 @@ We control the trigger, not GitHub's runners; when GitHub's API fails we show it
     await writeSession(c, opts.sessionSecret, who, secure);
     return c.redirect('/dashboard');
   });
+
+  app.get('/privacy', async (c) => c.html(privacyPage(opts.contactEmail, (await readSession(c, opts.sessionSecret))?.login)));
+  app.get('/terms', async (c) => c.html(termsPage(opts.contactEmail, (await readSession(c, opts.sessionSecret))?.login)));
 
   app.get('/logout', (c) => { clearSession(c); return c.redirect('/'); });
 

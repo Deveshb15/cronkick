@@ -18,7 +18,7 @@ await migrate(db);
 
 const gh = githubApp(cfg);
 const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl };
-const app = webApp(deps, { webhookSecret: cfg.webhookSecret, sessionSecret: cfg.sessionSecret, appSlug: cfg.appSlug, oauth: githubOAuth(gh, `${cfg.baseUrl}/callback`) });
+const app = webApp(deps, { webhookSecret: cfg.webhookSecret, sessionSecret: cfg.sessionSecret, appSlug: cfg.appSlug, contactEmail: cfg.contactEmail, oauth: githubOAuth(gh, `${cfg.baseUrl}/callback`) });
 const server = serve({ fetch: app.fetch, port: cfg.port }, (i) => console.log(`ontime listening on :${i.port}`));
 
 let stopping = false;

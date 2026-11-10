@@ -102,3 +102,15 @@ test('alerts: a failed send is retried next pass', async () => {
   f.setFailMail(false);
   expect(await sendSlotAlerts(f.deps)).toBe(1);
 });
+
+test('alerts: two servers at once send each alert exactly once', async () => {
+  await seed(db, { plan: 'pro' });
+  await db.query(`UPDATE installations SET alert_email = 'ops@acme.dev'`);
+  for (let i = 0; i < 5; i++) await slotIn('expired');
+  const a = fakeDeps(db, T0);
+  const b = fakeDeps(db, T0);
+  const slow = (f: typeof a) => { const send = f.deps.mailer.send; f.deps.mailer.send = async (m) => { await new Promise((r) => setTimeout(r, 5)); return send(m); }; };
+  slow(a); slow(b);
+  await Promise.all([sendSlotAlerts(a.deps), sendSlotAlerts(b.deps)]);
+  expect(a.sent.length + b.sent.length).toBe(5);
+});

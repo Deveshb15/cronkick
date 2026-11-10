@@ -24,7 +24,8 @@ export function loadConfig() {
     clientSecret: need('GITHUB_CLIENT_SECRET'),
     sessionSecret: need('SESSION_SECRET'),
     resendApiKey: process.env.RESEND_API_KEY ?? '',
-    mailFrom: process.env.MAIL_FROM ?? 'Ontime <alerts@ontime.dev>',
+    mailFrom: process.env.MAIL_FROM ?? 'Ontime <alerts@ontime.devesh.fun>',
+    contactEmail: need('CONTACT_EMAIL'),
     probeRepos: (process.env.PROBE_REPOS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     probeToken: process.env.PROBE_TOKEN ?? '',
   };

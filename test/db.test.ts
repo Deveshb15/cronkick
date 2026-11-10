@@ -31,3 +31,9 @@ test('missing DATABASE_URL is a named config error', () => {
     process.env.DATABASE_URL = saved;
   }
 });
+
+test('two servers migrating at once both succeed', async () => {
+  await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+  const results = await Promise.all([migrate(db), migrate(db)]);
+  expect(results.flat()).toEqual(['001_init.sql']);
+});

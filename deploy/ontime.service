@@ -1,14 +1,15 @@
 # /etc/systemd/system/ontime.service
 [Unit]
 Description=Ontime (GitHub Actions on-time cron)
-After=network-online.target postgresql.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 User=ontime
 WorkingDirectory=/opt/ontime
 EnvironmentFile=/etc/ontime/env
-ExecStart=/usr/bin/npm start
+# tsx directly (not npm) so SIGTERM reaches the app and in-flight dispatches drain.
+ExecStart=/opt/ontime/node_modules/.bin/tsx src/main.ts
 Restart=always
 RestartSec=2
 # The app drains in-flight dispatches on SIGTERM (up to 15 s).

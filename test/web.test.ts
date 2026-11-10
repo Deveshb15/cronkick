@@ -11,7 +11,7 @@ beforeEach(async () => { db?.end(); db = await freshDb(); });
 afterAll(() => db.end());
 
 const T0 = new Date('2026-11-10T12:00:00Z');
-const opts = { webhookSecret: 'whsec', sessionSecret: 'sess', appSlug: 'ontime', oauth: { authorizeUrl: (s: string) => `https://github.com/login/oauth/authorize?state=${s}`, exchange: async () => ({ login: 'octo', installs: [1] }) } };
+const opts = { webhookSecret: 'whsec', sessionSecret: 'sess', appSlug: 'ontime', contactEmail: 'hi@ontime.test', oauth: { authorizeUrl: (s: string) => `https://github.com/login/oauth/authorize?state=${s}`, exchange: async () => ({ login: 'octo', installs: [1] }) } };
 
 async function cookieFor(installs: number[]) {
   const c = await generateSignedCookie('ontime_session', JSON.stringify({ login: 'octo', installs, exp: Date.now() + 60_000 }), 'sess');
@@ -115,4 +115,13 @@ test('Pro: counts cover the whole window even when the table is capped', async (
   expect(body).toContain('600 slots');
   expect(body).toContain('newest 500 shown');
   expect(body.match(/<tr>/g)!.length).toBe(501); // header + 500
+});
+
+test('privacy and terms pages are public', async () => {
+  const a = app().app;
+  for (const path of ['/privacy', '/terms']) {
+    const res = await a.request(path);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('hi@ontime.test');
+  }
 });

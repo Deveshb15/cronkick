@@ -20,7 +20,7 @@ export function page(title: string, body: H, login?: string): H {
   return html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title><style>${raw(css)}</style></head><body>
 <header><a href="/"><strong>Ontime</strong></a><span>${login ? html`${login} · <a href="/logout">Sign out</a>` : html`<a href="/login">Sign in with GitHub</a>`}</span></header>
-<main>${body}</main></body></html>`;
+<main>${body}</main><footer><main class="muted"><a href="/lateness">Lateness</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></main></footer></body></html>`;
 }
 
 export const STATES = ['accepted', 'fired', 'unknown', 'expired', 'skipped', 'pending', 'dispatching'] as const;

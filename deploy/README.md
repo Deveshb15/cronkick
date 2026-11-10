@@ -1,78 +1,155 @@
-# Deploying Ontime (PRD §10)
+# Deploying Ontime
 
-Nothing here runs by itself. Every `doctl` command creates paid resources (or uses credit), so check §10.1 of the PRD first.
+Setup until February 2027 (DigitalOcean credit), then move to AWS (see the end).
 
-## 1. Register the GitHub App
+```
+GitHub webhooks / users
+        │  https://ontime.devesh.fun
+   Cloudflare (DNS, proxied)
+        │  TLS with a Cloudflare Origin certificate
+   DO load balancer (nyc3) ── health check /healthz
+     ┌──┴──┐
+ ontime-1  ontime-2     (s-2vcpu-4gb, systemd, port 3000, reachable only from the LB)
+     └──┬──┘
+ Managed Postgres 17, primary + standby (private network)
+```
 
-GitHub → Settings → Developer settings → GitHub Apps → New GitHub App.
+Both droplets do everything: web, webhooks, dispatch. Postgres row locks (`SKIP LOCKED`) stop them firing the same slot, alerts are claimed in the database before sending, and migrations take an advisory lock. Losing a droplet loses nothing; the other keeps firing.
 
-| Setting | Value |
+Cost: 2 × $24 droplets + $10 backups + $12 load balancer + ~$60 Postgres with standby ≈ **$130/mo**, covered by credit.
+
+Every `doctl` command below creates billed resources. Check `doctl balance get` first.
+
+---
+
+## 1. Domain: `ontime.devesh.fun` (Cloudflare)
+
+`devesh.fun` is on Cloudflare nameservers, so everything happens there.
+
+1. Do step 4 (load balancer) first to get its IP.
+2. Cloudflare → `devesh.fun` → **DNS → Add record**: Type `A`, Name `ontime`, IPv4 = the load balancer IP, Proxy status **Proxied** (orange cloud).
+3. **SSL/TLS → Overview**: set encryption mode to **Full (strict)**.
+4. **SSL/TLS → Origin Server → Create certificate**: hostnames `ontime.devesh.fun`, validity 15 years. Save the certificate as `origin.pem` and the key as `origin-key.pem` (only on your laptop, not in the repo). These go on the load balancer in step 4.
+5. **Security → Bots**: leave Bot Fight Mode **off**. It can challenge GitHub's webhook deliveries.
+
+## 2. Email: Resend
+
+1. Sign up at resend.com.
+2. **Domains → Add domain** → `mail.ontime.devesh.fun` (a subdomain keeps alert-sending reputation separate from `devesh.fun`).
+3. Resend shows 3–4 DNS records (an MX and TXT for SPF on `send.mail.ontime`, a DKIM TXT `resend._domainkey.mail.ontime`). Add each in Cloudflare DNS exactly as shown, **DNS only** (grey cloud).
+4. Optional but recommended: add a DMARC TXT record, name `_dmarc.mail.ontime`, value `v=DMARC1; p=none;`.
+5. Click **Verify** in Resend (minutes to an hour).
+6. **API Keys → Create**: permission *Sending access*, domain `mail.ontime.devesh.fun`. Put it in `RESEND_API_KEY`; set `MAIL_FROM=Ontime <alerts@mail.ontime.devesh.fun>`.
+
+## 3. GitHub App
+
+github.com → your avatar → **Settings → Developer settings → GitHub Apps → New GitHub App**. Create it under your personal account now; you can transfer it to an organization later.
+
+| Field | Value |
 |---|---|
-| Homepage URL | `https://ontime.dev` |
-| Callback URL | `https://ontime.dev/callback` |
-| Request user authorization (OAuth) during installation | off (users sign in from the site) |
-| Webhook URL | `https://ontime.dev/webhooks` |
-| Webhook secret | `openssl rand -hex 32` → `GITHUB_WEBHOOK_SECRET` |
-| Repository permissions | Actions: **Read and write** · Contents: **Read-only** · Metadata: **Read-only** |
-| Subscribe to events | Installation target is automatic · **Push** · **Workflow run** |
-| Where can it be installed | Any account |
+| GitHub App name | the product name (it becomes the slug in `github.com/apps/<slug>`) |
+| Homepage URL | `https://ontime.devesh.fun` |
+| Callback URL | `https://ontime.devesh.fun/callback` |
+| Expire user authorization tokens | on |
+| Request user authorization (OAuth) during installation | off |
+| Webhook → Active | on |
+| Webhook URL | `https://ontime.devesh.fun/webhooks` |
+| Webhook secret | output of `openssl rand -hex 32` → `GITHUB_WEBHOOK_SECRET` |
+| Repository permissions | **Actions: Read and write**, **Contents: Read-only**, Metadata: Read-only (automatic) |
+| Account permissions | none |
+| Subscribe to events | **Push**, **Workflow run** (`installation` events are always sent) |
+| Where can this GitHub App be installed? | **Any account** |
 
-Then generate a private key (`.pem`) and a client secret. Note the App ID, slug, and client ID.
+After **Create GitHub App**:
+1. Note the **App ID** → `GITHUB_APP_ID`, the slug from the public page URL → `GITHUB_APP_SLUG`, and the **Client ID** → `GITHUB_CLIENT_ID`.
+2. **Generate a new client secret** → `GITHUB_CLIENT_SECRET`.
+3. **Generate a private key** (downloads a `.pem`). Turn it into one line for the env file: `awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' key.pem` → `GITHUB_PRIVATE_KEY`. Then delete the download.
+4. Optional: upload a logo under **Display information**.
 
-`installation` and `installation_repositories` events are always sent to GitHub Apps; no checkbox needed.
+Install it on one of your own repos first (the public page → **Install**) to dogfood before anyone else does.
 
-## 2. Droplet (PRD §10.2, Option A)
+The Marketplace listing comes later (Settings → Developer settings → your app → **List in Marketplace**). It needs the privacy and terms URLs: `https://ontime.devesh.fun/privacy` and `/terms`.
 
-Run the `doctl` commands in PRD §10.2: droplet, reserved IP, firewall. Then SSH in:
-
-```bash
-# Node 22, Postgres 17, Caddy
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt-get install -y nodejs
-sudo apt-get install -y postgresql-17 caddy   # add the PGDG apt repo first if 17 isn't in Ubuntu's
-sudo -u postgres createuser ontime && sudo -u postgres createdb -O ontime ontime
-sudo -u postgres psql -c "ALTER USER ontime PASSWORD '<strong password>'"
-
-sudo useradd --system --home /opt/ontime ontime
-sudo mkdir -p /opt/ontime /etc/ontime && sudo chown ontime /opt/ontime
-# copy the repo to /opt/ontime, then:
-cd /opt/ontime && sudo -u ontime npm ci --omit=dev
-```
-
-## 3. Secrets
-
-Write `/etc/ontime/env` from `.env.example`, owned by root and mode `600`. The App private key lives only in that file, readable only by root (systemd reads it before dropping to the `ontime` user), so it's never in the repo or the database (R2). Back up the droplet with DigitalOcean's encrypted backups (`--enable-backups`).
+## 4. DigitalOcean
 
 ```bash
-sudo chmod 600 /etc/ontime/env && sudo chown root:root /etc/ontime/env
+doctl compute ssh-key list
+SSH_KEYS="$(doctl compute ssh-key list --format ID --no-header | paste -sd, -)"
+
+# Postgres 17: primary + standby (automatic failover)
+doctl databases create ontime-db --engine pg --version 17 --size db-s-1vcpu-2gb --num-nodes 2 --region nyc3 --wait
+DB_ID=$(doctl databases list --format ID,Name --no-header | awk '$2=="ontime-db"{print $1}')
+doctl databases db create $DB_ID ontime
+doctl databases user create $DB_ID ontime
+
+# Two droplets
+doctl compute droplet create ontime-1 ontime-2 \
+  --region nyc3 --size s-2vcpu-4gb --image ubuntu-24-04-x64 --ssh-keys "$SSH_KEYS" \
+  --enable-monitoring --enable-backups --tag-name ontime --user-data-file deploy/cloud-init.yml --wait
+
+# Only the droplets may reach Postgres
+doctl databases firewalls append $DB_ID --rule tag:ontime
+doctl databases connection $DB_ID --private --format URI   # use user "ontime" / db "ontime" in this URI → DATABASE_URL
+doctl databases get-ca $DB_ID --format Certificate --no-header | base64 -d > do-ca.crt   # copy to /etc/ontime/do-ca.crt on each droplet
+# DATABASE_URL must end with ?sslmode=verify-full&sslrootcert=/etc/ontime/do-ca.crt (DO's CA isn't in the default trust store)
+
+# Load balancer with the Cloudflare origin certificate
+CERT_ID=$(doctl compute certificate create --name cf-origin-ontime --type custom \
+  --leaf-certificate-path origin.pem --private-key-path origin-key.pem --format ID --no-header)
+doctl compute load-balancer create --name ontime-lb --region nyc3 --tag-name ontime \
+  --forwarding-rules "entry_protocol:https,entry_port:443,target_protocol:http,target_port:3000,certificate_id:$CERT_ID" \
+  --health-check protocol:http,port:3000,path:/healthz,check_interval_seconds:10,response_timeout_seconds:5,healthy_threshold:3,unhealthy_threshold:3
+LB_ID=$(doctl compute load-balancer list --format ID,Name --no-header | awk '$2=="ontime-lb"{print $1}')
+doctl compute load-balancer get $LB_ID --format IP          # → the Cloudflare A record in step 1
+
+# Droplets: SSH from your IP only; port 3000 from the load balancer only
+MY_IP=$(curl -s https://ifconfig.me)
+doctl compute firewall create --name ontime-fw --tag-names ontime \
+  --inbound-rules "protocol:tcp,ports:22,address:$MY_IP/32 protocol:tcp,ports:3000,load_balancer_uid:$LB_ID" \
+  --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0"
 ```
 
-## 4. Start
+## 5. Secrets and first deploy
+
+On **each** droplet, write `/etc/ontime/env` from `.env.example` (same values on both):
 
 ```bash
-sudo cp deploy/ontime.service /etc/systemd/system/ && sudo systemctl daemon-reload
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
-sudo systemctl enable --now ontime   # migrations run on boot
-curl https://ontime.dev/healthz       # → ok
+ssh root@<ip> 'cat > /etc/ontime/env && chmod 600 /etc/ontime/env' < my-prod.env
 ```
 
-## 5. Billing stub
-
-Until Polar or Dodo is wired up (R14), set a paying account's plan by hand:
+The App private key lives only in that root-only file: not in the repo, not in the database. Then, from your laptop:
 
 ```bash
-cd /opt/ontime && sudo -u ontime env $(sudo cat /etc/ontime/env | xargs) npm run plan:set -- acme pro
+deploy/push.sh <ip-1> <ip-2>     # one at a time; waits for /healthz before the next
+curl https://ontime.devesh.fun/healthz   # → ok
 ```
 
-## 6. Probes
+Run `push.sh` the same way for every later release. Migrations run on boot.
 
-See `probe/README.md`, then set `PROBE_REPOS` and `PROBE_TOKEN` and restart.
+## 6. Monitoring
 
-## Operating notes
-
-- Logs: `journalctl -u ontime -f`.
-- One process runs both the web server and the scheduler. Restarting during a dispatch waits up to 15 s; a slot cut off mid-call shows as `unknown`, never fired twice.
-- Before launch, check the delivery gate (PRD §11): ≥1,000 real slots, ≥99% first attempts within 30 s:
+- **Uptime:** a free check on `https://ontime.devesh.fun/healthz` every minute (Better Stack or UptimeRobot), alerting your phone.
+- **DigitalOcean:** `doctl monitoring alert create --type v1/insights/droplet/cpu --compare GreaterThan --value 80 --window 5m --tag-name ontime --emails <you> --description "ontime cpu"`.
+- **Clock:** `ssh root@<ip> timedatectl` should say `System clock synchronized: yes`.
+- **Logs:** `ssh root@<ip> journalctl -u ontime -f`.
+- **Delivery gate (PRD §11):** at least 1,000 slots and 99% first attempts within 30 s:
   ```sql
-  SELECT count(*), avg((first_attempt_at - due_at) <= interval '30 seconds')::float AS within_30s
+  SELECT count(*), avg(((first_attempt_at - due_at) <= interval '30 seconds')::int) AS within_30s
     FROM slots WHERE first_attempt_at IS NOT NULL;
   ```
+
+## 7. Billing stub
+
+Until Polar or Dodo is wired up:
+
+```bash
+ssh root@<ip> 'cd /opt/ontime && set -a && . /etc/ontime/env && sudo -E -u ontime node_modules/.bin/tsx scripts/set-plan.ts acme pro'
+```
+
+## 8. Moving to AWS (February)
+
+Nothing in the code is DigitalOcean-specific.
+1. Postgres → RDS for PostgreSQL 17 (Multi-AZ): `pg_dump` from DO, `pg_restore` into RDS, during a short pause.
+2. App → the `Dockerfile` on ECS Fargate (2+ tasks behind an ALB; autoscaling optional). Env vars from Secrets Manager.
+3. Point the Cloudflare record at the ALB. The GitHub App URLs don't change if the domain stays.
+4. Delete the DO resources: `doctl compute load-balancer delete`, `droplet delete`, `databases delete`, `certificate delete`, `firewall delete`.
