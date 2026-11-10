@@ -1,116 +1,114 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { HistoryTable } from '@/components/history-table';
 import { GitHubMark } from '@/components/icons';
-import { RunsChart } from '@/components/runs-chart';
-import { SlotStrip, StripLegend } from '@/components/slot-strip';
-import { SlotPill } from '@/components/ui';
+import { Countdown, Time } from '@/components/live';
+import { LiveStrip } from '@/components/live-strip';
+import { Code } from '@/components/ui';
 import { requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { MAX_ROWS, dailyRuns, recentTicks, workflowHistory, type Schedule } from '@/lib/data';
-import { relTime, utc } from '@/lib/format';
+import { MAX_ROWS, recentSlots, workflowHistory, type Flag, type Health, type HistoryFilter, type Schedule } from '@/lib/data';
+import { humanCron } from '@/lib/live';
 
 export const dynamic = 'force-dynamic';
 
-const delay = (a: Date | null, b: Date) => (a ? `+${((a.getTime() - b.getTime()) / 1000).toFixed(1)}s` : '—');
+const HEALTH: Record<Health, { label: string; cls: string }> = {
+  on_time: { label: 'Healthy', cls: 'bg-emerald-400/10 text-emerald-300 inset-ring-emerald-400/25' },
+  late: { label: 'Late runs', cls: 'bg-orange-400/10 text-orange-300 inset-ring-orange-400/25' },
+  missed: { label: 'Missed runs', cls: 'bg-red-500/10 text-red-300 inset-ring-red-500/25' },
+  no_runs: { label: 'No runs yet', cls: 'bg-white/5 text-zinc-300 inset-ring-white/10' },
+};
+const FILTERS: { key: HistoryFilter | undefined; label: string }[] = [
+  { key: undefined, label: 'All' }, { key: 'late', label: 'Late' }, { key: 'missed', label: 'Missed' }, { key: 'failed', label: 'Failed jobs' },
+];
+const container = 'mx-auto max-w-6xl px-4 sm:px-6 lg:px-10';
 
-function Rail({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="border-t border-white/10 pt-4">
-      <dt className="text-sm/6 text-zinc-500 sm:text-xs/6">{label}</dt>
-      <dd className="mt-1 text-base/6 sm:text-sm/6">{children}</dd>
-    </div>
-  );
+function Ticks({ text }: { text: string }) {
+  return <>{text.split(/(`[^`]+`)/).map((part, i) => (part.startsWith('`') ? <Code key={i}>{part.slice(1, -1)}</Code> : part))}</>;
 }
 
-export default async function WorkflowPage({ params }: { params: Promise<{ installationId: string; workflowId: string }> }) {
+export default async function WorkflowPage({ params, searchParams }: {
+  params: Promise<{ installationId: string; workflowId: string }>; searchParams: Promise<{ filter?: string }>;
+}) {
   const p = await params;
   const id = Number(p.installationId);
   const wid = Number(p.workflowId);
+  const q = await searchParams;
+  const filter = (['late', 'missed', 'failed'] as const).find((f) => f === q.filter);
   await requireInstallation(id, `/dashboard/${id}/workflows/${wid}`);
   const now = new Date();
-  const [h, ticks, days] = await Promise.all([workflowHistory(db, id, wid, now), recentTicks(db, id, now, 96), dailyRuns(db, wid, now, 14)]);
+  const [h, strips] = await Promise.all([workflowHistory(db, id, wid, now, filter), recentSlots(db, id, now, 96)]);
   if (!h) notFound();
-  const total = Object.values(h.counts).reduce((a, b) => a + b, 0);
-  const ran = (h.counts.accepted ?? 0) + (h.counts.fired ?? 0);
-  const missed = (h.counts.unknown ?? 0) + (h.counts.expired ?? 0);
-  const schedules = h.workflow.schedules as Schedule[];
-  const fileUrl = `https://github.com/${h.workflow.full_name}/blob/${h.workflow.default_branch}/${h.workflow.path}`;
+  const w = h.workflow;
+  const schedules = w.schedules as Schedule[];
+  const flags = w.flags as Flag[];
+  const active = schedules.some((s) => s.status === 'active') && !flags.length && w.present;
+  const health = HEALTH[h.health];
+  const words = schedules.map((s) => `${humanCron(s.cron)} · ${s.tz}`).join(' and ') || 'No schedule';
+  const window = h.limits.historyRows ? `last ${h.limits.historyRows} slots` : `last ${h.limits.historyDays} days`;
   return (
-    <div className="space-y-10">
-      <div>
-        <Link href={`/dashboard/${id}`} className="text-base/6 text-zinc-400 hover:text-white sm:text-sm/6">← {h.workflow.full_name}</Link>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">{h.workflow.name}</h1>
-          {h.last && <SlotPill state={h.last.state} />}
-        </div>
-        <p className="mt-1 font-mono text-sm/6 text-zinc-500 sm:text-xs/6">{h.workflow.path}</p>
-      </div>
-
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_15rem]">
-        <div className="min-w-0 space-y-10">
-          <section className="rounded-2xl bg-zinc-900/50 p-5 inset-ring inset-ring-white/10 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <h2 className="text-sm/6 font-medium">Last 96 slots</h2>
-              <StripLegend />
+    <>
+      <section className="relative isolate overflow-hidden border-b border-white/5">
+        <div aria-hidden="true" className="time-grid absolute inset-0 -z-10" />
+        <div aria-hidden="true" className="hero-glow absolute inset-0 -z-10" />
+        <div className={`${container} pt-12 pb-8`}>
+          <Link href={`/dashboard/${id}`} className="font-mono text-xs/5 text-zinc-500 hover:text-zinc-300">← Overview / {w.full_name.split('/')[1]}</Link>
+          <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+                {w.name}
+                <span className={`rounded-full px-2.5 py-0.5 text-xs/5 font-medium inset-ring ${health.cls}`}>● {health.label}</span>
+              </h1>
+              <p className="mt-2 text-sm/6 text-zinc-400">{words} <span className="ml-1 font-mono text-xs/5 text-zinc-600">{schedules.map((s) => s.cron).join(' · ')} · {w.path}</span></p>
             </div>
-            <SlotStrip ticks={ticks.get(wid) ?? Array(96).fill('idle')} size="lg" className="mt-4" />
-            <h2 className="mt-8 text-sm/6 font-medium">Runs per day, last 14 days</h2>
-            <div className="mt-4"><RunsChart buckets={days} /></div>
-          </section>
+            <div className="flex gap-2">
+              <a href={`https://github.com/${w.full_name}/blob/${w.default_branch}/${w.path}`} className="flex items-center gap-x-1.5 rounded-lg bg-white/5 px-3 py-2 text-sm/6 inset-ring inset-ring-white/10 transition hover:bg-white/10"><GitHubMark className="size-4" />Workflow file ↗</a>
+              <a href={`https://github.com/${w.full_name}/actions/workflows/${w.path.split('/').pop()}`} className="rounded-lg bg-white/5 px-3 py-2 text-sm/6 inset-ring inset-ring-white/10 transition hover:bg-white/10">Runs on GitHub ↗</a>
+            </div>
+          </div>
 
-          {h.slots.length === 0 ? (
-            <p className="text-base/6 text-zinc-400 sm:text-sm/6">No runs yet. The first one is due {relTime(h.next)}.</p>
-          ) : (
-            <div className="-mx-4 -my-2 overflow-x-auto whitespace-nowrap sm:-mx-6 lg:mx-0">
-              <div className="inline-block min-w-full px-4 py-2 align-middle sm:px-6 lg:px-0">
-                <table className="w-full text-left text-base/6 sm:text-sm/6">
-                  <thead>
-                    <tr className="border-b border-white/10">
-                      {['Due (UTC)', 'Triggered', 'Status', 'GitHub said', 'Run', 'Result'].map((c) => <th key={c} className="py-2.5 pr-4 font-medium whitespace-nowrap last:pr-0">{c}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 text-zinc-400 tabular-nums">
-                    {h.slots.map((s) => (
-                      <tr key={s.id}>
-                        <td className="py-2.5 pr-4 font-mono text-zinc-200">{utc(s.due_at)}</td>
-                        <td className="py-2.5 pr-4 font-mono">{delay(s.first_attempt_at, s.due_at)}</td>
-                        <td className="py-2.5 pr-4"><SlotPill state={s.state} /></td>
-                        <td className="max-w-xs truncate py-2.5 pr-4" title={s.response_note ?? ''}>{s.response_status ?? ''} {s.response_note ?? ''}</td>
-                        <td className="py-2.5 pr-4">
-                          {s.run_url ? <a href={s.run_url} className="font-medium text-white hover:underline">View run ↗</a> : '—'}
-                          {s.matched_by === 'time' && <span className="ml-2 text-zinc-500" title="Linked by time; a manual run in the same minutes could be mixed up">by time</span>}
-                        </td>
-                        <td className="py-2.5">{s.conclusion === 'success' ? <span className="text-emerald-300">success</span> : s.conclusion ? <span className="text-red-300">{s.conclusion}</span> : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="relative mt-7 overflow-hidden rounded-2xl bg-zinc-950/80 p-5 inset-ring inset-ring-white/10">
+            <div aria-hidden="true" className="absolute inset-x-12 top-0 h-px bg-linear-to-r from-transparent via-brand-300/60 to-transparent" />
+            {!w.present ? (
+              <p className="text-sm/6 text-zinc-300">This file was removed from {w.full_name}. Its history stays for the {window}.</p>
+            ) : flags.length ? (
+              <div className="text-sm/6"><p className="font-medium text-red-300">Not running: this workflow needs a fix</p><ul role="list" className="mt-2 space-y-1 text-red-300/90">{flags.map((f) => <li key={f.message}><Ticks text={f.message} /></li>)}</ul></div>
+            ) : !active ? (
+              <p className="text-sm/6 text-zinc-300">Paused: you’re using every schedule on your plan. Remove a <Code># cronkick</Code> line elsewhere, or upgrade for more.</p>
+            ) : (
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <p className="font-mono text-[0.6875rem]/4 tracking-wider text-zinc-500 uppercase">Next kick</p>
+                  <p className="mt-1 text-sm/6">{h.next ? <><Time iso={h.next} /> <span className="text-zinc-500">your time</span></> : <span className="text-zinc-500">No upcoming slot yet</span>}</p>
+                </div>
+                {h.next && <Countdown to={h.next} className="font-mono text-4xl font-medium text-brand-400" />}
               </div>
-            </div>
-          )}
+            )}
+            <div className="mt-5 flex items-center justify-between text-xs/5 text-zinc-500"><span>Last 96 scheduled times</span><span className="max-sm:hidden">Click a tick to find it in the history</span></div>
+            <div className="mt-2"><LiveStrip slots={strips.get(wid) ?? []} positions={96} next={active && !!h.next} height="h-12" linkRows /></div>
+          </div>
         </div>
+      </section>
 
-        <aside>
-          <dl className="space-y-5">
-            <Rail label="Schedule">
-              {schedules.length ? schedules.map((s) => <p key={`${s.cron}${s.tz}`} className="font-mono">{s.cron} <span className="text-zinc-500">{s.tz}</span></p>) : <span className="text-zinc-500">None</span>}
-            </Rail>
-            <Rail label="Next run">{h.next ? <>{relTime(h.next)}<span className="block font-mono text-sm/5 text-zinc-500 sm:text-xs/5">{utc(h.next)}</span></> : '—'}</Rail>
-            <Rail label="Last run">{h.last ? <>{relTime(h.last.due_at)}<span className="block font-mono text-sm/5 text-zinc-500 sm:text-xs/5">{utc(h.last.due_at)}</span></> : '—'}</Rail>
-            <Rail label={h.limits.historyRows ? `Last ${h.limits.historyRows} slots` : `Last ${h.limits.historyDays} days`}>
-              <span className="tabular-nums">{ran} ran · <span className={missed ? 'text-red-300' : ''}>{missed} missed</span> · {total} total</span>
-              {h.slots.length === MAX_ROWS && <span className="block text-sm/5 text-zinc-500 sm:text-xs/5">Newest {MAX_ROWS} shown below</span>}
-            </Rail>
-            <Rail label="On GitHub">
-              <a href={fileUrl} className="flex items-center gap-x-1.5 font-medium hover:underline"><GitHubMark className="size-4" />Workflow file</a>
-              <a href={`https://github.com/${h.workflow.full_name}/actions`} className="mt-1 flex items-center gap-x-1.5 font-medium hover:underline"><GitHubMark className="size-4" />Actions runs</a>
-            </Rail>
-            <Rail label="What the states mean">
-              <p className="text-sm/5 text-pretty text-zinc-400 sm:text-xs/5"><span className="text-zinc-200">Unknown</span>: we sent it but couldn’t confirm GitHub got it, so we didn’t resend. <span className="text-zinc-200">Expired</span>: GitHub kept failing until the deadline, so we skipped it rather than run late.</p>
-            </Rail>
-          </dl>
-        </aside>
-      </div>
-    </div>
+      <section className={`${container} py-10`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base/7 font-semibold">History</h2>
+            <p className="text-xs/5 text-zinc-500">The {window} on {h.plan === 'pro' ? 'Pro' : 'Free'}{h.slots.length === MAX_ROWS ? ` · newest ${MAX_ROWS} shown` : ''}. Click a row to see every step.</p>
+          </div>
+          <nav className="flex gap-1 rounded-lg bg-white/5 p-0.5 text-xs/5">
+            {FILTERS.map((f) => (
+              <Link key={f.label} href={f.key ? `?filter=${f.key}` : '?'} scroll={false} aria-current={filter === f.key ? 'page' : undefined}
+                className={`rounded-md px-2.5 py-1 transition ${filter === f.key ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:text-white'}`}>{f.label}</Link>
+            ))}
+          </nav>
+        </div>
+        <div className="mt-4">
+          {h.slots.length
+            ? <HistoryTable rows={h.slots} />
+            : <p className="rounded-2xl px-4 py-8 text-center text-sm/6 text-zinc-500 inset-ring inset-ring-white/10">{filter ? 'Nothing here. Good news.' : h.next ? 'History starts after the first scheduled time.' : 'No runs yet.'}</p>}
+        </div>
+      </section>
+    </>
   );
 }

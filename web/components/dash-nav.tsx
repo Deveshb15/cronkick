@@ -1,46 +1,46 @@
 'use client';
-import { ArrowTopRightOnSquareIcon, ChartBarIcon, Cog6ToothIcon, Squares2X2Icon } from '@heroicons/react/16/solid';
+import { Cog6ToothIcon, Squares2X2Icon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { ReactNode } from 'react';
 
-type Props = { id: number; installs: { id: number; account_login: string; plan: string }[]; login: string; manageUrl: string };
+type Props = { id: number; switcher: ReactNode; login: string; plan: string; used: number; limit: number; floorMinutes: number };
 
-export function DashNav({ id, installs, login, manageUrl }: Props) {
+/** Sidebar: account switcher, two destinations, plan usage, and who is signed in. */
+export function DashNav({ id, switcher, login, plan, used, limit, floorMinutes }: Props) {
   const path = usePathname();
-  const item = 'flex items-center gap-x-2.5 rounded-lg px-2.5 py-2 text-base/6 font-medium sm:py-1.5 sm:text-sm/6';
+  const settings = path.endsWith('/settings');
+  const item = 'flex items-center gap-x-2.5 rounded-lg px-2.5 py-2 text-base/6 font-medium transition sm:text-sm/6';
   const idle = 'text-zinc-400 hover:bg-white/5 hover:text-white';
   const on = 'bg-white/5 text-white';
-  const settings = path.endsWith('/settings');
   return (
-    <div className="flex h-full flex-col gap-y-8">
-      <div>
-        <p className="px-2.5 font-mono text-xs/6 font-medium tracking-wide text-zinc-500 uppercase">Accounts</p>
-        <ul role="list" className="mt-1 space-y-0.5">
-          {installs.map((i) => (
-            <li key={i.id}>
-              <Link href={`/dashboard/${i.id}`} className={`${item} justify-between ${i.id === id ? on : idle}`}>
-                <span className="flex min-w-0 items-center gap-x-2.5">
-                  <img src={`https://github.com/${i.account_login}.png?size=40`} alt="" className="size-5 shrink-0 rounded-md outline-1 -outline-offset-1 outline-white/10" />
-                  <span className="min-w-0 truncate">{i.account_login}</span>
-                </span>
-                <span className="shrink-0 font-mono text-xs/5 text-zinc-500 uppercase">{i.plan}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
+    <div className="flex h-full flex-col gap-y-6">
+      {switcher}
       <ul role="list" className="space-y-0.5">
-        <li><Link href={`/dashboard/${id}`} className={`${item} ${!settings ? on : idle}`}><Squares2X2Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />Workflows</Link></li>
-        <li><Link href={`/dashboard/${id}/settings`} className={`${item} ${settings ? on : idle}`}><Cog6ToothIcon aria-hidden="true" className="size-4 shrink-0 fill-current" />Settings</Link></li>
-        <li><Link href="/lateness" className={`${item} ${idle}`}><ChartBarIcon aria-hidden="true" className="size-4 shrink-0 fill-current" />GitHub lateness</Link></li>
-        <li><a href={manageUrl} className={`${item} ${idle}`}><ArrowTopRightOnSquareIcon aria-hidden="true" className="size-4 shrink-0 fill-current" />Choose repositories</a></li>
+        <li>
+          <Link href={`/dashboard/${id}`} aria-current={!settings ? 'page' : undefined} className={`${item} ${!settings ? on : idle}`}>
+            <Squares2X2Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />Overview
+            {used > 0 && <span className="ml-auto rounded-full bg-white/10 px-1.5 font-mono text-[0.625rem]/5 text-zinc-300">{used}</span>}
+          </Link>
+        </li>
+        <li>
+          <Link href={`/dashboard/${id}/settings`} aria-current={settings ? 'page' : undefined} className={`${item} ${settings ? on : idle}`}>
+            <Cog6ToothIcon aria-hidden="true" className="size-4 shrink-0 fill-current" />Settings
+          </Link>
+        </li>
       </ul>
-      <div className="mt-auto flex items-center justify-between gap-x-3 border-t border-white/5 px-2.5 pt-4 text-sm/6">
-        <span className="flex min-w-0 items-center gap-x-2">
+      <div className="mt-auto space-y-4">
+        <div className="rounded-xl bg-white/[0.03] p-3 inset-ring inset-ring-white/10">
+          <div className="flex items-baseline justify-between text-xs/5"><span className="text-zinc-400">Schedules</span><span className="font-mono"><b className="font-medium text-white">{used}</b><span className="text-zinc-500"> / {limit}</span></span></div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-brand-500 transition-[width] duration-500" style={{ width: `${Math.min(100, (used / limit) * 100)}%` }} /></div>
+          <p className="mt-2 text-[0.6875rem]/4 text-zinc-500">{plan === 'pro' ? 'Pro' : 'Free'} · every {floorMinutes} min or slower</p>
+          {plan !== 'pro' && <Link href={`/dashboard/${id}/settings`} className="mt-1.5 block text-[0.6875rem]/4 font-medium text-brand-400 hover:text-brand-300">Get Pro: 50 schedules, every 5 min →</Link>}
+        </div>
+        <div className="flex items-center gap-x-2 px-2.5 text-xs/5 text-zinc-500">
           <img src={`https://github.com/${login}.png?size=40`} alt="" className="size-5 shrink-0 rounded-full outline-1 -outline-offset-1 outline-white/10" />
-          <span className="min-w-0 truncate text-zinc-300">{login}</span>
-        </span>
-        <a href="/logout" className="shrink-0 font-medium text-zinc-500 hover:text-white">Sign out</a>
+          <span className="min-w-0 truncate">Signed in as {login}</span>
+          <a href="/logout" className="ml-auto shrink-0 font-medium hover:text-white">Sign out</a>
+        </div>
       </div>
     </div>
   );

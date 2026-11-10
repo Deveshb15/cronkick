@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en" class="bg-[#09090B]">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cronkick dashboard mockups</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>tailwind.config={theme:{extend:{colors:{ink:'#09090B',brand:{300:'#ffd27a',400:'#ffc24a',500:'#FFB020'},ok:'#34d399',late:'#fdba74',miss:'#ef4444'},fontFamily:{sans:['Inter','system-ui'],mono:['JetBrains Mono','monospace']}}}}</script>
+<style>
+body{font-family:Inter,system-ui;color:#fafafa;-webkit-font-smoothing:antialiased}
+.grid-bg{background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 80% 90% at 30% 0%,#000 20%,transparent 75%)}
+.glow{background:radial-gradient(60% 80% at 25% 0%,rgba(255,176,32,.13),transparent 70%)}
+.tick{position:relative;flex:1;height:100%;min-width:3px;border-radius:2px;transform-origin:bottom;transition:transform .15s,filter .15s}
+.tick:hover,.tick.sel{transform:scaleY(1.2);filter:brightness(1.25);z-index:5}
+.tick[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;translate:-50% 0;white-space:nowrap;background:#27272a;padding:5px 8px;border-radius:7px;font:500 11px/1.4 'JetBrains Mono';color:#fff;box-shadow:0 0 0 1px rgba(255,255,255,.1),0 10px 30px rgba(0,0,0,.6);pointer-events:none}
+.t-ok{background:#34d399}.t-late{background:#fdba74}.t-miss{background:#ef4444}
+.t-skip{background:repeating-linear-gradient(135deg,rgba(255,255,255,.18) 0 2px,transparent 2px 5px)}
+.t-next{background:transparent;box-shadow:inset 0 0 0 1.5px rgba(255,176,32,.75);animation:tw 1.6s ease-in-out infinite}
+@keyframes tw{50%{box-shadow:inset 0 0 0 1.5px rgba(255,176,32,.25)}}
+.t-new{animation:grow .55s cubic-bezier(.2,.9,.3,1.3) both}
+@keyframes grow{from{transform:scaleY(0)}}
+.pulse-ring{animation:ring .9s ease-out}
+@keyframes ring{from{box-shadow:0 0 0 0 rgba(52,211,153,.7)}to{box-shadow:0 0 0 8px rgba(52,211,153,0)}}
+.rise{animation:rise .7s cubic-bezier(.2,.7,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px);filter:blur(6px)}}
+.pop{animation:pop .45s cubic-bezier(.2,.9,.3,1.25) both}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}}
+.flash{animation:flash 1.4s ease-out}
+@keyframes flash{from{background:rgba(255,176,32,.16)}}
+.track{background-image:linear-gradient(90deg,rgba(255,255,255,.14) 50%,transparent 50%);background-size:6px 1px;background-repeat:repeat-x;background-position:0 100%}
+.hairline::before{content:'';position:absolute;left:48px;right:48px;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,210,122,.6),transparent)}
+.tab[aria-selected=true]{background:#FFB020;color:#09090B}
+.bar{transform-box:fill-box;transform-origin:bottom;animation:grow .6s cubic-bezier(.2,.9,.3,1) both}#radar circle[data-i]{transition:r .15s;cursor:pointer}#radar circle[data-i]:hover{r:6}#cmp .hov:hover{fill:rgba(255,255,255,.05)}#scatter circle[data-i]:hover{r:6}details>summary{list-style:none}details>summary::-webkit-details-marker{display:none}
+details[open] .chev{transform:rotate(90deg)}
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- mock switcher (not part of the design) -->
+<div class="sticky top-0 z-50 flex items-center gap-2 border-b border-white/10 bg-black/80 px-4 py-2 backdrop-blur">
+  <span class="mr-2 font-mono text-[11px] uppercase tracking-wider text-zinc-500">Mockup · demo data</span>
+  <button class="tab rounded-full px-3 py-1 text-xs font-medium text-zinc-300" data-tab="overview" aria-selected="true">1 · Overview</button>
+  <button class="tab rounded-full px-3 py-1 text-xs font-medium text-zinc-300" data-tab="detail">2 · Workflow detail</button>
+  <button class="tab rounded-full px-3 py-1 text-xs font-medium text-zinc-300" data-tab="first">3 · First run</button>
+  <span class="ml-auto text-[11px] text-zinc-500">Hover ticks · click rows · watch the countdown hit zero</span>
+</div>
+
+<div class="flex">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sticky top-[41px] flex h-[calc(100vh-41px)] w-60 shrink-0 flex-col border-r border-white/5 bg-zinc-950 p-4">
+  <div class="flex items-center gap-2 px-1.5 pt-1"><svg viewBox="0 0 256 256" class="size-6"><path fill="#FFB020" fill-rule="evenodd" d="M56 0H200A56 56 0 0 1 256 56V200A56 56 0 0 1 200 256H56A56 56 0 0 1 0 200V56A56 56 0 0 1 56 0ZM46 90A14 14 0 0 1 74 90L74 166A14 14 0 0 1 46 166ZM90 90A14 14 0 0 1 118 90L118 166A14 14 0 0 1 90 166ZM134 90A14 14 0 0 1 162 90L162 166A14 14 0 0 1 134 166ZM196.9 71.93A14 14 0 0 1 223.53 80.58L195.1 168.07A14 14 0 0 1 168.47 159.42Z"/></svg><span class="font-semibold tracking-tight">cronkick</span></div>
+  <div class="relative mt-6">
+    <p class="px-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500">GitHub account</p>
+    <button id="acctBtn" class="mt-1.5 flex w-full items-center gap-2.5 rounded-lg bg-white/5 px-2.5 py-2 text-left ring-1 ring-inset ring-white/10 transition hover:bg-white/10">
+      <span class="grid size-6 place-items-center rounded-md bg-gradient-to-br from-amber-300 to-orange-500 text-[11px] font-bold text-ink">D</span>
+      <span class="flex-1 text-sm font-medium">Deveshb15</span><span class="rounded bg-white/10 px-1.5 font-mono text-[10px] text-zinc-400">FREE</span>
+      <svg class="size-4 fill-zinc-500" viewBox="0 0 16 16"><path d="M4.2 6.2a.75.75 0 0 1 1.06 0L8 8.94l2.74-2.74a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L4.2 7.26a.75.75 0 0 1 0-1.06Z"/></svg>
+    </button>
+    <div id="acctMenu" class="pop absolute inset-x-0 top-full z-20 mt-1.5 hidden rounded-xl bg-zinc-900 p-1.5 shadow-2xl ring-1 ring-white/10">
+      <a class="flex items-center gap-2.5 rounded-lg bg-white/5 px-2.5 py-2 text-sm"><span class="grid size-6 place-items-center rounded-md bg-gradient-to-br from-amber-300 to-orange-500 text-[11px] font-bold text-ink">D</span><span class="flex-1"><b class="font-medium">Deveshb15</b><span class="block text-[11px] text-emerald-400">● 2 on time</span></span><span class="font-mono text-[10px] text-zinc-500">FREE</span></a>
+      <a class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-white/5"><span class="grid size-6 place-items-center rounded-md bg-sky-500 text-[11px] font-bold text-ink">A</span><span class="flex-1"><b class="font-medium">acme-corp</b><span class="block text-[11px] text-red-400">● 1 missed run</span></span><span class="font-mono text-[10px] text-zinc-500">PRO</span></a>
+      <a class="mt-1 block border-t border-white/5 px-2.5 pt-2 pb-1 text-xs text-zinc-400 hover:text-white">+ Add a GitHub account or org ↗</a>
+    </div>
+  </div>
+  <nav class="mt-6 space-y-0.5 text-sm">
+    <a data-nav="overview" class="nav flex items-center gap-2.5 rounded-lg bg-white/5 px-2.5 py-2 text-white"><svg class="size-4 fill-current" viewBox="0 0 16 16"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h2A1.5 1.5 0 0 1 7 3.5v2A1.5 1.5 0 0 1 5.5 7h-2A1.5 1.5 0 0 1 2 5.5v-2Zm7 0A1.5 1.5 0 0 1 10.5 2h2A1.5 1.5 0 0 1 14 3.5v2A1.5 1.5 0 0 1 12.5 7h-2A1.5 1.5 0 0 1 9 5.5v-2Zm-7 7A1.5 1.5 0 0 1 3.5 9h2A1.5 1.5 0 0 1 7 10.5v2A1.5 1.5 0 0 1 5.5 14h-2A1.5 1.5 0 0 1 2 12.5v-2Zm7 0A1.5 1.5 0 0 1 10.5 9h2a1.5 1.5 0 0 1 1.5 1.5v2a1.5 1.5 0 0 1-1.5 1.5h-2A1.5 1.5 0 0 1 9 12.5v-2Z"/></svg>Overview<span class="ml-auto rounded-full bg-white/10 px-1.5 font-mono text-[10px] text-zinc-300">2</span></a>
+    <a class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-zinc-400 transition hover:bg-white/5 hover:text-white"><svg class="size-4 fill-current" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M6.46 1.4a1.5 1.5 0 0 1 3.08 0l.1.5a5.5 5.5 0 0 1 1.32.76l.48-.18a1.5 1.5 0 0 1 1.54 2.66l-.38.33c.07.5.07 1 0 1.5l.38.33a1.5 1.5 0 0 1-1.54 2.66l-.48-.18c-.4.32-.85.57-1.32.76l-.1.5a1.5 1.5 0 0 1-3.08 0l-.1-.5a5.5 5.5 0 0 1-1.32-.76l-.48.18a1.5 1.5 0 0 1-1.54-2.66l.38-.33a5.5 5.5 0 0 1 0-1.5l-.38-.33a1.5 1.5 0 0 1 1.54-2.66l.48.18c.4-.32.85-.57 1.32-.76l.1-.5ZM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" transform="translate(0 2)"/></svg>Settings</a>
+  </nav>
+  <div class="mt-auto space-y-4">
+    <div class="rounded-xl bg-white/[0.03] p-3 ring-1 ring-inset ring-white/10">
+      <div class="flex items-baseline justify-between text-xs"><span class="text-zinc-400">Schedules</span><span class="font-mono"><b class="text-white">2</b><span class="text-zinc-500"> / 10</span></span></div>
+      <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div class="h-full w-[20%] rounded-full bg-brand-500"></div></div>
+      <p class="mt-2 text-[11px] text-zinc-500">Free · every 15 min or slower</p>
+      <a class="mt-1 inline-block text-[11px] font-medium text-brand-400 hover:text-brand-300">Get Pro: 50 schedules, every 5 min →</a>
+    </div>
+    <div class="flex items-center gap-2 px-1.5 text-xs text-zinc-500"><span class="grid size-5 place-items-center rounded-full bg-zinc-700 text-[10px] text-white">D</span>Signed in as Deveshb15<a class="ml-auto hover:text-white">Sign out</a></div>
+  </div>
+</aside>
+
+<main class="relative min-w-0 flex-1">
+
+<!-- ============ 1 · OVERVIEW ============ -->
+<section id="overview" class="screen">
+  <div class="relative overflow-hidden border-b border-white/5">
+    <div class="grid-bg absolute inset-0"></div><div class="glow absolute inset-0"></div>
+    <div class="relative mx-auto max-w-6xl px-10 pt-9 pb-8">
+      <div class="flex items-center justify-between">
+        <p class="font-mono text-[11px] uppercase tracking-wider text-zinc-500">Deveshb15 · Overview</p>
+        <p class="flex items-center gap-2 font-mono text-[11px] text-zinc-400"><span class="relative flex size-2"><span id="livePing" class="absolute inline-flex size-full rounded-full bg-emerald-400 opacity-0"></span><span class="relative inline-flex size-2 rounded-full bg-emerald-400"></span></span>Live</p>
+      </div>
+      <div class="rise mt-5 flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <h1 class="flex items-center gap-3 text-3xl font-semibold tracking-tight"><span class="relative flex size-3"><span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-40"></span><span class="relative inline-flex size-3 rounded-full bg-emerald-400"></span></span>All 2 schedules on time</h1>
+          <p class="mt-2 text-sm text-zinc-400"><span id="ovSummary">6 of 6</span> runs in the last 24 h started within 30 s of their scheduled time.</p>
+        </div>
+        <!-- next kick -->
+        <div class="hairline relative w-[22rem] overflow-hidden rounded-2xl bg-zinc-950/80 p-4 ring-1 ring-inset ring-white/10 backdrop-blur">
+          <div class="flex items-center justify-between font-mono text-[11px] uppercase tracking-wider text-zinc-500"><span>Next kick</span><span id="kickState" class="normal-case tracking-normal text-zinc-400">16:15 UTC · 21:45 your time</span></div>
+          <div class="mt-2 flex items-end justify-between">
+            <div><p class="text-sm font-medium">cronkick</p><p class="text-xs text-zinc-500">cronkick-probe-a +1 more at the same time</p></div>
+            <p id="cd" class="font-mono text-3xl font-medium tabular-nums text-brand-400">00:12</p>
+          </div>
+          <div class="mt-3 h-1 overflow-hidden rounded-full bg-white/10"><div id="cdBar" class="h-full rounded-full bg-brand-500 transition-[width] duration-1000 ease-linear" style="width:5%"></div></div>
+        </div>
+      </div>
+      <!-- KPIs -->
+      <dl class="rise mt-8 grid grid-cols-4 divide-x divide-white/10 rounded-2xl bg-zinc-950/60 ring-1 ring-inset ring-white/10 [animation-delay:120ms]">
+        <div class="group relative p-4"><dt class="font-mono text-[11px] uppercase tracking-wider text-zinc-500">On time · 24 h</dt><dd class="mt-1.5 text-2xl font-semibold tabular-nums"><span id="kOn">6</span><span class="text-zinc-500"> of <span id="kDue">6</span></span></dd><p class="mt-1 text-xs text-zinc-500">started within 30 s</p>
+          <div class="pointer-events-none absolute top-full left-4 z-20 mt-2 hidden w-64 rounded-xl bg-zinc-800 p-3 text-xs shadow-2xl ring-1 ring-white/10 group-hover:block"><p class="mb-2 font-medium">Last 24 h, by outcome</p><p class="flex justify-between"><span><span class="mr-1.5 inline-block size-2 rounded-sm bg-ok"></span>On time (≤ 30 s)</span><b id="kOn2">6</b></p><p class="flex justify-between"><span><span class="mr-1.5 inline-block size-2 rounded-sm bg-late"></span>Late</span><b>0</b></p><p class="flex justify-between"><span><span class="mr-1.5 inline-block size-2 rounded-sm bg-miss"></span>Gave up / unconfirmed</span><b>0</b></p><p class="mt-2 text-zinc-400">Measured from the scheduled time to Cronkick's request to GitHub.</p></div></div>
+        <div class="p-4"><dt class="font-mono text-[11px] uppercase tracking-wider text-zinc-500">Runs · 24 h</dt><dd id="kRuns" class="mt-1.5 text-2xl font-semibold tabular-nums">6</dd><p class="mt-1 text-xs text-zinc-500"><span id="kRuns2">6</span> on time · 0 late · 0 missed</p></div>
+        <div class="p-4"><dt class="font-mono text-[11px] uppercase tracking-wider text-zinc-500">Start delay</dt><dd class="mt-1.5 font-mono text-2xl font-medium tabular-nums">+0.05 s</dd><p class="mt-1 text-xs text-zinc-500">median · slowest +0.09 s</p></div>
+        <div class="p-4"><dt class="font-mono text-[11px] uppercase tracking-wider text-zinc-500">Job results</dt><dd class="mt-1.5 text-2xl font-semibold tabular-nums"><span id="kPass">6</span><span class="text-zinc-500"> passed</span></dd><p class="mt-1 text-xs text-zinc-500">0 failed · reported by GitHub</p></div>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mx-auto max-w-6xl space-y-10 px-10 py-9">
+    <!-- schedules -->
+    <section>
+      <div class="flex items-end justify-between">
+        <h2 class="text-base font-semibold">Your schedules</h2>
+        <ul class="flex items-center gap-4 text-xs text-zinc-400"><li class="flex items-center gap-1.5"><span class="size-2 rounded-sm bg-ok"></span>on time</li><li class="flex items-center gap-1.5"><span class="size-2 rounded-sm bg-late"></span>late</li><li class="flex items-center gap-1.5"><span class="size-2 rounded-sm bg-miss"></span>missed</li><li class="flex items-center gap-1.5"><span class="t-skip size-2 rounded-sm"></span>skipped</li><li class="flex items-center gap-1.5"><span class="size-2 rounded-sm ring-1 ring-inset ring-brand-500"></span>next</li><li class="flex items-center gap-1.5"><span class="track inline-block h-2 w-4"></span>before tracking</li></ul>
+      </div>
+      <div class="mt-4 divide-y divide-white/5 overflow-hidden rounded-2xl ring-1 ring-inset ring-white/10" id="rows"></div>
+    </section>
+
+    <!-- github-scheduled -->
+    <section>
+      <details class="group rounded-2xl bg-brand-500/[0.05] ring-1 ring-inset ring-brand-500/20">
+        <summary class="flex cursor-pointer items-center gap-3 px-5 py-4">
+          <svg class="chev size-4 fill-brand-400 transition" viewBox="0 0 16 16"><path d="M6.2 4.2a.75.75 0 0 1 1.06 0l3.27 3.27a.75.75 0 0 1 0 1.06L7.26 11.8a.75.75 0 0 1-1.06-1.06L8.94 8 6.2 5.26a.75.75 0 0 1 0-1.06Z"/></svg>
+          <div class="flex-1"><p class="text-sm font-medium">3 workflows still run on GitHub's schedule</p><p class="text-xs text-zinc-400">GitHub's <code class="font-mono text-zinc-300">schedule:</code> often starts late or skips runs. Move one over in two edits.</p></div>
+          <span class="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-ink">Review</span>
+        </summary>
+        <div class="space-y-2 px-5 pb-5">
+          <!-- candidate with plan conflict, expanded -->
+          <details open class="rounded-xl bg-zinc-950/80 ring-1 ring-inset ring-white/10">
+            <summary class="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm">
+              <svg class="chev size-3.5 fill-zinc-500 transition" viewBox="0 0 16 16"><path d="M6.2 4.2a.75.75 0 0 1 1.06 0l3.27 3.27a.75.75 0 0 1 0 1.06L7.26 11.8a.75.75 0 0 1-1.06-1.06L8.94 8 6.2 5.26a.75.75 0 0 1 0-1.06Z"/></svg>
+              <span class="font-medium">probe every 5 min</span><span class="font-mono text-xs text-zinc-500">cronkick-probe-a · every-5.yml</span>
+              <span class="ml-auto rounded-md bg-orange-400/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-300 ring-1 ring-inset ring-orange-400/20">Every 5 min needs Pro</span>
+            </summary>
+            <div class="grid grid-cols-[1fr_15rem] gap-5 border-t border-white/5 p-4">
+              <div>
+                <div class="flex items-center justify-between"><p class="text-xs text-zinc-400">Replace the <code class="font-mono">on:</code> block in <span class="font-mono text-zinc-300">.github/workflows/every-5.yml</span></p>
+                  <div class="flex gap-1 rounded-lg bg-white/5 p-0.5 text-[11px]" id="cad"><button data-c="*/15" class="rounded-md bg-white/10 px-2 py-1 font-medium">Every 15 min · Free</button><button data-c="*/5" class="rounded-md px-2 py-1 text-zinc-400">Every 5 min · Pro</button></div></div>
+                <pre class="mt-3 overflow-hidden rounded-xl bg-black/60 py-3 font-mono text-[13px] leading-6 ring-1 ring-inset ring-white/10"><span class="block bg-red-500/10 px-4 text-red-300">- on:</span><span class="block bg-red-500/10 px-4 text-red-300">-   schedule:</span><span class="block bg-red-500/10 px-4 text-red-300">-     - cron: "*/5 * * * *"</span><span class="block bg-emerald-500/10 px-4 text-emerald-300">+ on:</span><span class="block bg-emerald-500/10 px-4 text-emerald-300">+   workflow_dispatch:</span><span class="block bg-emerald-500/10 px-4 text-emerald-300" id="newLine">+   # cronkick: "*/15 * * * *"</span><span class="block px-4 text-zinc-500">  jobs: … (unchanged)</span></pre>
+              </div>
+              <div class="flex flex-col gap-2">
+                <button class="copy rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-ink transition hover:bg-brand-400">Copy new on: block</button>
+                <a class="rounded-lg bg-white/5 px-3 py-2 text-center text-sm ring-1 ring-inset ring-white/10 transition hover:bg-white/10">Edit file on GitHub ↗</a>
+                <p id="cadNote" class="mt-1 text-xs text-zinc-400">GitHub ran this every 5 min. Free runs every 15 min at most, so this block uses 15. Pro keeps 5.</p>
+                <a class="mt-auto text-xs text-zinc-500 hover:text-zinc-300">Keep it on GitHub · hide</a>
+              </div>
+            </div>
+          </details>
+          <details class="rounded-xl bg-zinc-950/80 ring-1 ring-inset ring-white/10"><summary class="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm"><svg class="chev size-3.5 fill-zinc-500 transition" viewBox="0 0 16 16"><path d="M6.2 4.2a.75.75 0 0 1 1.06 0l3.27 3.27a.75.75 0 0 1 0 1.06L7.26 11.8a.75.75 0 0 1-1.06-1.06L8.94 8 6.2 5.26a.75.75 0 0 1 0-1.06Z"/></svg><span class="font-medium">probe hourly</span><span class="font-mono text-xs text-zinc-500">cronkick-probe-a · hourly.yml</span><span class="ml-auto font-mono text-xs text-zinc-500">every hour · 0 * * * *</span></summary></details>
+          <details class="rounded-xl bg-zinc-950/80 ring-1 ring-inset ring-white/10"><summary class="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm"><svg class="chev size-3.5 fill-zinc-500 transition" viewBox="0 0 16 16"><path d="M6.2 4.2a.75.75 0 0 1 1.06 0l3.27 3.27a.75.75 0 0 1 0 1.06L7.26 11.8a.75.75 0 0 1-1.06-1.06L8.94 8 6.2 5.26a.75.75 0 0 1 0-1.06Z"/></svg><span class="font-medium">probe hourly</span><span class="font-mono text-xs text-zinc-500">cronkick-probe-b · hourly.yml</span><span class="ml-auto font-mono text-xs text-zinc-500">every hour · 0 * * * *</span></summary></details>
+        </div>
+      </details>
+    </section>
+
+    <!-- activity + github lateness -->
+    <section class="grid grid-cols-[1fr_20rem] gap-6">
+      <div>
+        <div class="flex items-end justify-between"><h2 class="text-base font-semibold">Activity</h2><span class="text-xs text-zinc-500">newest first</span></div>
+        <ul id="feed" class="mt-4 divide-y divide-white/5 rounded-2xl text-sm ring-1 ring-inset ring-white/10"></ul>
+      </div>
+      <a class="group relative flex flex-col overflow-hidden rounded-2xl bg-zinc-950 p-5 ring-1 ring-inset ring-white/10 transition hover:-translate-y-0.5 hover:ring-white/20">
+        <div class="glow absolute inset-0 opacity-0 transition group-hover:opacity-100"></div>
+        <p class="relative font-mono text-[11px] uppercase tracking-wider text-zinc-500">Public benchmark</p>
+        <p class="relative mt-3 text-sm font-medium">How late is GitHub's own scheduler?</p>
+        <div class="relative mt-4 space-y-2">
+          <div class="flex h-4 gap-[2px]" id="ghMini"></div>
+          <div class="flex h-4 gap-[2px]" id="ckMini"></div>
+        </div>
+        <p class="relative mt-4 text-xs text-zinc-400">In our probe repos this week, GitHub's <code class="font-mono">schedule:</code> ran a median 11 min late and skipped 1 in 4.</p>
+        <span class="relative mt-auto pt-4 text-xs font-medium text-brand-400">See the numbers →</span>
+      </a>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 2 · WORKFLOW DETAIL ============ -->
+<section id="detail" class="screen hidden">
+  <div class="relative overflow-hidden border-b border-white/5">
+    <div class="grid-bg absolute inset-0"></div><div class="glow absolute inset-0"></div>
+    <div class="relative mx-auto max-w-6xl px-10 pt-8 pb-8">
+      <a class="font-mono text-xs text-zinc-500 hover:text-zinc-300">← Overview / cronkick-probe-a</a>
+      <div class="rise mt-4 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 class="flex items-center gap-3 text-3xl font-semibold tracking-tight">cronkick <span class="rounded-full bg-emerald-400/10 px-2.5 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/25">● Healthy</span></h1>
+          <p class="mt-2 text-sm text-zinc-400">Every 15 minutes · UTC <span class="ml-2 font-mono text-xs text-zinc-500">*/15 * * * * · .github/workflows/cronkick.yml</span></p>
+        </div>
+        <div class="flex gap-2"><a class="rounded-lg bg-white/5 px-3 py-2 text-sm ring-1 ring-inset ring-white/10 transition hover:bg-white/10">Workflow file ↗</a><a class="rounded-lg bg-white/5 px-3 py-2 text-sm ring-1 ring-inset ring-white/10 transition hover:bg-white/10">Runs on GitHub ↗</a></div>
+      </div>
+      <div class="hairline rise relative mt-7 overflow-hidden rounded-2xl bg-zinc-950/80 p-5 ring-1 ring-inset ring-white/10 [animation-delay:100ms]">
+        <div class="flex items-end justify-between">
+          <div><p class="font-mono text-[11px] uppercase tracking-wider text-zinc-500">Next kick</p><p class="mt-1 text-sm">16:15 UTC <span class="text-zinc-500">· 21:45 your time</span></p></div>
+          <p id="cd2" class="font-mono text-4xl font-medium tabular-nums text-brand-400">00:12</p>
+        </div>
+        <div class="mt-4 flex items-center justify-between text-xs text-zinc-500"><span>Last 96 scheduled times · 24 h</span><span>Click a tick to open it below</span></div>
+        <div id="bigStrip" class="mt-2 flex h-12 items-end gap-[3px]"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mx-auto max-w-6xl space-y-8 px-10 py-9">
+    <div class="grid grid-cols-2 gap-5">
+      <div class="rounded-2xl bg-zinc-950 p-5 ring-1 ring-inset ring-white/10">
+        <div class="flex items-baseline justify-between"><p class="text-sm font-medium">How close to the minute</p><p class="font-mono text-xs text-zinc-500">median +0.05 s · slowest +0.09 s</p></div>
+        <svg id="dots" viewBox="0 0 520 150" class="mt-4 w-full"></svg>
+        <p class="text-xs text-zinc-500">Each dot is one run: seconds from the scheduled time to Cronkick's request. Anything left of the dashed line counts as on time.</p>
+      </div>
+      <div class="rounded-2xl bg-zinc-950 p-5 ring-1 ring-inset ring-white/10">
+        <div class="flex items-baseline justify-between"><p class="text-sm font-medium">Runs per day</p><p class="font-mono text-xs text-zinc-500">last 7 days · Free history</p></div>
+        <div id="bars" class="mt-4 flex h-[118px] items-end gap-3"></div>
+        <div class="mt-2 flex justify-between font-mono text-[10px] text-zinc-500"><span>Nov 4</span><span>Nov 10</span></div>
+      </div>
+    </div>
+    <section>
+      <div class="flex items-center justify-between"><h2 class="text-base font-semibold">History</h2>
+        <div class="flex gap-1 rounded-lg bg-white/5 p-0.5 text-xs"><button class="rounded-md bg-white/10 px-2.5 py-1 font-medium">All</button><button class="rounded-md px-2.5 py-1 text-zinc-400 hover:text-white">Late</button><button class="rounded-md px-2.5 py-1 text-zinc-400 hover:text-white">Missed</button><button class="rounded-md px-2.5 py-1 text-zinc-400 hover:text-white">Failed jobs</button></div></div>
+      <table class="mt-4 w-full text-left text-sm">
+        <thead class="text-xs text-zinc-500"><tr class="border-b border-white/10"><th class="py-2.5 font-medium">Scheduled</th><th class="font-medium">Started after</th><th class="font-medium">Cronkick</th><th class="font-medium">GitHub job</th><th class="text-right font-medium">Run</th></tr></thead>
+        <tbody id="hist" class="divide-y divide-white/5"></tbody>
+      </table>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 3 · FIRST RUN ============ -->
+<section id="first" class="screen hidden">
+  <div class="relative min-h-[calc(100vh-41px)] overflow-hidden">
+    <div class="grid-bg absolute inset-0"></div><div class="glow absolute inset-0"></div>
+    <div class="relative mx-auto max-w-3xl px-10 py-12">
+      <p class="font-mono text-[11px] uppercase tracking-wider text-brand-400">Getting started</p>
+      <h1 class="rise mt-3 text-4xl font-semibold tracking-tight">Schedule your first workflow</h1>
+      <p class="mt-3 text-zinc-400">Three steps. This page updates on its own as you go.</p>
+      <ol class="mt-10 space-y-8">
+        <li class="flex gap-4"><span class="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-400/15 text-emerald-300"><svg class="size-4 fill-current" viewBox="0 0 16 16"><path d="M12.4 4.3a.75.75 0 0 1 .1 1.06l-5 6a.75.75 0 0 1-1.1.05l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.92 1.92 4.47-5.37a.75.75 0 0 1 1.05-.1Z"/></svg></span>
+          <div class="flex-1"><p class="font-medium">Cronkick can see 2 repositories</p><p class="text-sm text-zinc-400">cronkick-probe-a, cronkick-probe-b · <a class="text-zinc-300 underline decoration-white/20 hover:decoration-white">Add more on GitHub ↗</a></p></div></li>
+        <li class="flex gap-4"><span class="grid size-7 shrink-0 place-items-center rounded-full bg-brand-500 font-mono text-sm font-semibold text-ink">2</span>
+          <div class="min-w-0 flex-1"><p class="font-medium">Add one line to a workflow</p>
+            <div class="mt-3 flex flex-wrap items-center gap-2 text-xs"><span class="text-zinc-400">How often?</span><div id="presets" class="flex gap-1 rounded-lg bg-white/5 p-0.5"><button data-cron="*/15 * * * *" data-h="every 15 minutes" class="rounded-md bg-white/10 px-2.5 py-1 font-medium">Every 15 min</button><button data-cron="0 * * * *" data-h="every hour" class="rounded-md px-2.5 py-1 text-zinc-400">Hourly</button><button data-cron="0 3 * * *" data-h="every day at 03:00 UTC" class="rounded-md px-2.5 py-1 text-zinc-400">Daily 03:00</button><button disabled class="rounded-md px-2.5 py-1 text-zinc-600" title="Pro">Every 5 min · Pro</button></div></div>
+            <div class="hairline relative mt-3 overflow-hidden rounded-2xl bg-zinc-950/90 ring-1 ring-inset ring-white/10">
+              <div class="flex items-center gap-2 border-b border-white/5 px-4 py-2.5 font-mono text-xs text-zinc-500"><span>.github/workflows/nightly.yml</span><span id="fState" class="ml-auto flex items-center gap-2"><span class="size-2 animate-pulse rounded-full bg-brand-500"></span>waiting for push</span></div>
+              <pre class="py-3 font-mono text-[13px] leading-7 text-zinc-300"><span class="block px-4"><i class="mr-4 not-italic text-zinc-700">1</i><span class="text-violet-300">on</span>:</span><span class="block px-4"><i class="mr-4 not-italic text-zinc-700">2</i>  <span class="text-violet-300">workflow_dispatch</span>:</span><span class="group flex items-center bg-brand-500/10 px-4 text-brand-400 shadow-[inset_2px_0_0_#FFB020]"><i class="mr-4 not-italic text-zinc-700">3</i>  <span id="mk"># cronkick: "*/15 * * * *"</span><button class="copy ml-auto rounded-md bg-brand-500 px-2 py-0.5 font-sans text-xs font-semibold text-ink">Copy</button></span><span class="block px-4"><i class="mr-4 not-italic text-zinc-700">4</i><span class="text-violet-300">jobs</span>: <span class="text-zinc-600">… keep your jobs as they are</span></span></pre>
+            </div>
+            <p class="mt-2 text-xs text-zinc-500">Runs <span id="human">every 15 minutes</span>. Already using <code class="font-mono">schedule:</code>? Remove it so GitHub doesn't run it a second time, late.</p>
+          </div></li>
+        <li class="flex gap-4"><span id="s3dot" class="grid size-7 shrink-0 place-items-center rounded-full bg-white/10 font-mono text-sm text-zinc-300">3</span>
+          <div class="flex-1"><p class="font-medium">Push to <span class="font-mono text-sm">main</span></p>
+            <div id="s3" class="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-3 text-sm text-zinc-400 ring-1 ring-inset ring-white/10"><svg class="size-4 animate-spin text-brand-400" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".25" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Watching 2 repositories for a push…<button id="simPush" class="ml-auto rounded-md bg-white/10 px-2 py-1 text-[11px] text-zinc-300 hover:bg-white/15">demo: simulate push</button></div>
+          </div></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- toasts -->
+<div id="toasts" class="fixed right-6 bottom-6 z-40 flex flex-col gap-2"></div>
+</main>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+// tabs
+$$('.tab').forEach(b=>b.onclick=()=>{$$('.tab').forEach(x=>x.setAttribute('aria-selected',x===b));$$('.screen').forEach(s=>s.classList.toggle('hidden',s.id!==b.dataset.tab));scrollTo(0,0)});
+$('#acctBtn').onclick=e=>{e.stopPropagation();$('#acctMenu').classList.toggle('hidden')};document.onclick=()=>$('#acctMenu').classList.add('hidden');
+const pad=n=>String(n).padStart(2,'0');
+let hh=15,mm=15; // demo clock: next slot 16:15 → we call it hh:mm of last slot
+const slotsA=['15:30','15:45','16:00'];
+function row(name,repo,times,id){
+  const tips=times.map((t,i)=>`<span class="tick t-ok ${i===times.length-1&&id==='a'?'':''}" data-tip="${t} UTC · started +0.0${5+i%4} s · run ✓"></span>`).join('');
+  return `<a class="group flex items-center gap-6 bg-zinc-950/40 px-5 py-4 transition hover:bg-white/[0.03]" onclick="$$('.tab')[1].click()">
+    <span class="size-2.5 shrink-0 rounded-full bg-emerald-400"></span>
+    <div class="w-56 shrink-0"><p class="text-sm font-medium">${name} <span class="font-normal text-zinc-500">· ${repo}</span></p><p class="text-xs text-zinc-400">Every 15 minutes · UTC <span class="font-mono text-zinc-600">*/15 * * * *</span></p></div>
+    <div class="flex h-7 flex-1 items-end gap-[3px]"><div class="track h-full flex-[40]"></div><div id="strip-${id}" class="flex h-full flex-[8] items-end gap-[3px]">${tips}<span class="tick t-next h-full"></span></div></div>
+    <div class="w-32 shrink-0 text-right"><p class="text-sm font-medium tabular-nums"><span class="cnt">${times.length} of ${times.length}</span> on time</p><p class="text-xs text-zinc-500">next <span class="font-mono text-brand-400 cdSmall">00:12</span></p></div>
+    <svg class="size-4 shrink-0 fill-zinc-600 transition group-hover:translate-x-0.5 group-hover:fill-zinc-300" viewBox="0 0 16 16"><path d="M6.2 4.2a.75.75 0 0 1 1.06 0l3.27 3.27a.75.75 0 0 1 0 1.06L7.26 11.8a.75.75 0 0 1-1.06-1.06L8.94 8 6.2 5.26a.75.75 0 0 1 0-1.06Z"/></svg></a>`;
+}
+$('#rows').innerHTML=row('cronkick','cronkick-probe-a',slotsA,'a')+row('cronkick','cronkick-probe-b',slotsA,'b');
+const feed=[['16:00','probe-a','+0.05 s','#42847301'],['16:00','probe-b','+0.06 s','#42847298'],['15:45','probe-a','+0.04 s','#42846011'],['15:45','probe-b','+0.05 s','#42846007'],['15:30','probe-a','+0.05 s','#42844958']];
+const feedRow=(f,isNew)=>`<li class="flex items-center gap-3 px-4 py-2.5 ${isNew?'flash':''}"><span class="grid size-5 place-items-center rounded-full bg-emerald-400/15 text-emerald-300"><svg class="size-3 fill-current" viewBox="0 0 16 16"><path d="M12.4 4.3a.75.75 0 0 1 .1 1.06l-5 6a.75.75 0 0 1-1.1.05l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.92 1.92 4.47-5.37a.75.75 0 0 1 1.05-.1Z"/></svg></span><span class="font-mono text-xs text-zinc-500">${f[0]}</span><span>cronkick <span class="text-zinc-500">· ${f[1]}</span></span><span class="font-mono text-xs text-emerald-300">${f[2]}</span><span class="ml-auto text-xs text-zinc-500">job passed</span><a class="font-mono text-xs text-zinc-400 hover:text-white">run ${f[3]} ↗</a></li>`;
+$('#feed').innerHTML=feed.map(f=>feedRow(f)).join('');
+// mini benchmark strips
+const gh='llmlollmmlolllmllmlolmllolllmm'.split('');$('#ghMini').innerHTML=gh.map(c=>`<span class="tick ${c==='o'?'t-ok':c==='l'?'t-late':'t-miss'}"></span>`).join('');$('#ckMini').innerHTML=gh.map(()=>'<span class="tick t-ok"></span>').join('');
+// detail: big strip
+let big='';for(let i=0;i<96;i++){if(i<86){big+=`<span class="tick h-full" style="background:transparent"></span>`;continue}const t=`${pad(Math.floor((i*15+60)/60)%24)}:${pad((i*15)%60)}`;big+=`<span class="tick t-ok h-full cursor-pointer" data-i="${i}" data-tip="${t} UTC · +0.0${5+i%4} s · job passed"></span>`}
+$('#bigStrip').innerHTML=`<div class="track h-full flex-[86]"></div><div class="flex h-full flex-[10] items-end gap-[3px]">${big.split('</span>').filter(s=>!s.includes('background:transparent')).join('</span>')}<span class="tick t-next h-full"></span></div>`;
+// dots chart
+(function(){const svg=$('#dots');let s='<line x1="40" y1="120" x2="510" y2="120" stroke="rgba(255,255,255,.15)"/>';const x=v=>40+v/60*470;
+ s+=`<line x1="${x(30)}" y1="10" x2="${x(30)}" y2="120" stroke="#FFB020" stroke-dasharray="4 4" stroke-opacity=".7"/><text x="${x(30)+6}" y="20" fill="#FFB020" font-size="11" font-family="JetBrains Mono">30 s on-time line</text>`;
+ [0,10,20,30,40,50,60].forEach(v=>s+=`<text x="${x(v)}" y="138" fill="#71717a" font-size="10" text-anchor="middle" font-family="JetBrains Mono">${v}s</text>`);
+ [.05,.06,.04,.05,.07,.05,.09,.05,.06,.05].forEach((v,i)=>s+=`<circle cx="${x(v)+i%3}" cy="${40+((i*37)%70)}" r="4.5" fill="#34d399" fill-opacity=".85"><title>+${v} s</title></circle>`);
+ s+=`<text x="${x(0)+14}" y="${70}" fill="#a1a1aa" font-size="11">all 10 runs here, under 0.1 s</text>`;svg.innerHTML=s})();
+// bars
+$('#bars').innerHTML=[0,0,0,0,0,0,10].map((v,i)=>`<div class="group relative flex h-full flex-1 flex-col justify-end"><div class="rounded-t bg-ok transition group-hover:brightness-125" style="height:${v?Math.max(8,v*9):2}px;${v?'':'background:rgba(255,255,255,.1)'}"></div><span class="pointer-events-none absolute -top-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] group-hover:block">${v} runs</span></div>`).join('');
+// history
+const hist=[['21:30 today','16:00 UTC','+0.05 s','Started','success','#42847301'],['21:15 today','15:45 UTC','+0.04 s','Started','success','#42846011'],['21:00 today','15:30 UTC','+0.05 s','Started','success','#42844958']];
+const histRow=(h,isNew)=>`<tr class="cursor-pointer transition hover:bg-white/[0.02] ${isNew?'flash':''}" onclick="this.nextElementSibling.classList.toggle('hidden')"><td class="py-3"><span title="${h[1]}">${h[0]}</span> <span class="font-mono text-xs text-zinc-600">${h[1]}</span></td><td class="font-mono text-emerald-300">${h[2]}</td><td><span class="rounded-md bg-emerald-400/10 px-1.5 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/20" title="GitHub created the run">✓ ${h[3]}</span></td><td><span class="text-xs text-emerald-300">✓ ${h[4]}</span></td><td class="text-right font-mono text-xs text-zinc-400">${h[5]} ↗</td></tr>
+<tr class="hidden bg-white/[0.02]"><td colspan="5" class="px-4 py-3"><ol class="flex items-center gap-3 font-mono text-[11px] text-zinc-400"><li>Due ${h[1]}</li><li class="text-zinc-600">→</li><li>Sent to GitHub ${h[2]}</li><li class="text-zinc-600">→</li><li>GitHub accepted (204)</li><li class="text-zinc-600">→</li><li>Run ${h[5]} linked by id</li><li class="text-zinc-600">→</li><li class="text-emerald-300">Job: success</li></ol></td></tr>`;
+$('#hist').innerHTML=hist.map(h=>histRow(h)).join('');
+// cadence toggle
+$$('#cad button').forEach(b=>b.onclick=()=>{$$('#cad button').forEach(x=>x.className='rounded-md px-2 py-1 text-zinc-400');b.className='rounded-md bg-white/10 px-2 py-1 font-medium';$('#newLine').textContent=`+   # cronkick: "${b.dataset.c} * * * *"`;$('#cadNote').textContent=b.dataset.c==='*/5'?'Every 5 minutes needs Pro ($9/mo). On Free, Cronkick will flag this workflow instead of running it.':'GitHub ran this every 5 min. Free runs every 15 min at most, so this block uses 15. Pro keeps 5.'});
+$$('.copy').forEach(b=>b.onclick=()=>{const t=b.textContent;b.textContent='Copied ✓';setTimeout(()=>b.textContent=t,1400)});
+// presets
+$$('#presets button:not([disabled])').forEach(b=>b.onclick=()=>{$$('#presets button:not([disabled])').forEach(x=>x.className='rounded-md px-2.5 py-1 text-zinc-400');b.className='rounded-md bg-white/10 px-2.5 py-1 font-medium';$('#mk').textContent=`# cronkick: "${b.dataset.cron}"`;$('#human').textContent=b.dataset.h});
+$('#simPush').onclick=()=>{$('#s3').outerHTML=`<div class="pop mt-3 flex items-center gap-3 rounded-xl bg-emerald-400/[0.06] px-4 py-3 text-sm ring-1 ring-inset ring-emerald-400/25"><svg class="size-4 fill-emerald-300" viewBox="0 0 16 16"><path d="M12.4 4.3a.75.75 0 0 1 .1 1.06l-5 6a.75.75 0 0 1-1.1.05l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.92 1.92 4.47-5.37a.75.75 0 0 1 1.05-.1Z"/></svg><span>Found <b class="font-medium">nightly.yml</b> in cronkick-probe-a. First kick in <span class="font-mono text-brand-400">04:12</span></span><a class="ml-auto text-xs font-medium text-brand-400">View schedule →</a></div>`;$('#s3dot').className='grid size-7 shrink-0 place-items-center rounded-full bg-emerald-400/15 text-emerald-300';$('#s3dot').innerHTML='✓';$('#fState').innerHTML='<span class="size-2 rounded-full bg-emerald-400"></span>synced'};
+// live demo: countdown → kick → new tick + toast + counters
+let left=12, total=12, n=6, slot=16*60+15;
+const hm=m=>`${pad(Math.floor(m/60)%24)}:${pad(m%60)}`, local=m=>hm(m+330);
+function toast(html){const t=document.createElement('div');t.className='pop flex items-center gap-3 rounded-xl bg-zinc-900/95 py-3 pr-5 pl-3.5 shadow-2xl ring-1 ring-white/10 backdrop-blur';t.innerHTML=html;$('#toasts').prepend(t);setTimeout(()=>{t.style.transition='opacity .4s';t.style.opacity=0;setTimeout(()=>t.remove(),400)},6000)}
+function kick(){
+  n+=2; const t=hm(slot);
+  $('#kickState').textContent='kicking…';
+  setTimeout(()=>{
+    ['a','b'].forEach(id=>{const s=$('#strip-'+id);const nx=s.querySelector('.t-next');const k=document.createElement('span');k.className='tick t-ok t-new h-full';k.dataset.tip=`${t} UTC · started +0.05 s · run ✓`;s.insertBefore(k,nx);setTimeout(()=>k.classList.add('pulse-ring'),400)});
+    $$('.cnt').forEach(c=>c.textContent=`${n/2} of ${n/2}`);
+    ['#kOn','#kDue','#kRuns','#kRuns2','#kOn2','#kPass'].forEach(s=>{const e=$(s);e.textContent=n;e.classList.remove('rise');void e.offsetWidth;e.classList.add('rise')});
+    $('#ovSummary').textContent=`${n} of ${n}`;
+    $('#feed').insertAdjacentHTML('afterbegin',feedRow([t,'probe-b','+0.06 s','#42848990'],true)+feedRow([t,'probe-a','+0.05 s','#42848993'],true));
+    $('#hist').insertAdjacentHTML('afterbegin',histRow([local(slot)+' today',t+' UTC','+0.05 s','Started','success','#42848993'],true));
+    const bs=$('#bigStrip').lastElementChild, nx=bs.querySelector('.t-next'), k=document.createElement('span');k.className='tick t-ok t-new h-full';k.dataset.tip=`${t} UTC · +0.05 s · job passed`;bs.insertBefore(k,nx);
+    const p=$('#livePing');p.className='absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60';setTimeout(()=>p.className='absolute inline-flex size-full rounded-full bg-emerald-400 opacity-0',1600);
+    toast(`<span class="grid size-7 place-items-center rounded-full bg-emerald-400/15 text-emerald-300">✓</span><div><p class="text-sm font-medium">Started cronkick on 2 repos</p><p class="font-mono text-[11px] text-zinc-500">${t} UTC · +0.05 s · runs #42848993, #42848990 ↗</p></div>`);
+    slot+=15; $('#kickState').textContent=`${hm(slot)} UTC · ${local(slot)} your time`; left=total=20;
+  },1300);
+}
+setInterval(()=>{
+  if(left<=0)return; left--;
+  const s=`${pad(Math.floor(left/60))}:${pad(left%60)}`; ['#cd','#cd2'].forEach(q=>$(q).textContent=left?s:'00:00'); $$('.cdSmall').forEach(e=>e.textContent=s);
+  $('#cdBar').style.width=`${(1-left/total)*100}%`;
+  if(left===0)kick();
+},1000);
+</script>
+</body></html>

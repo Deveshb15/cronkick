@@ -1,140 +1,86 @@
-import { CheckCircleIcon } from '@heroicons/react/16/solid';
+import { ChevronRightIcon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
-import { CopyBlock } from '@/components/copy-block';
-import { SlotStrip, StripLegend } from '@/components/slot-strip';
-import { Badge, ButtonLink, Code, STATUS } from '@/components/ui';
+import type { ReactNode } from 'react';
+import { ActivityFeed, DispatchToasts } from '@/components/activity';
+import { FirstRun } from '@/components/first-run';
+import { Countdown, Counter } from '@/components/live';
+import { LiveStrip } from '@/components/live-strip';
+import { SwitchSection, type Candidate } from '@/components/switch-card';
+import { Code } from '@/components/ui';
 import { requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { installationsFor, overview, recentTicks, type RepoRow, type Tick, type WorkflowRow } from '@/lib/data';
-import { manageReposUrl, pct, relTime } from '@/lib/format';
+import { activity, installationsFor, overview, recentSlots, type Counts24, type SlotView, type Verdict, type WorkflowRow } from '@/lib/data';
+import { manageReposUrl } from '@/lib/format';
+import { fmtDelay, humanCron } from '@/lib/live';
+import { switchPlan } from '@/lib/switch';
+import { probeReport } from '../../../../src/probe/collector.ts';
 import { PLANS } from '../../../../src/plans.ts';
 
 export const dynamic = 'force-dynamic';
 
 const STRIP = 48;
-const STARTER = `name: nightly
-on:
-  workflow_dispatch: # cronkick: "0 3 * * *"
-jobs:
-  nightly:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Triggered on time by Cronkick"`;
+const container = 'mx-auto max-w-6xl px-4 sm:px-6 lg:px-10';
 
-const ORDER = { needs_fix: 0, active: 1, limited: 2, ready: 3, none: 4 } as const;
+const VERDICT: Record<Verdict, { dot: string; text: (n: number) => string }> = {
+  on_time: { dot: 'bg-emerald-400', text: (n) => `All ${n} schedule${n === 1 ? '' : 's'} on time` },
+  late: { dot: 'bg-orange-300', text: () => 'Some runs started late' },
+  missed: { dot: 'bg-red-500', text: () => 'A run was missed' },
+  needs_fix: { dot: 'bg-red-500', text: () => 'A workflow needs a fix' },
+  no_runs: { dot: 'bg-zinc-500', text: () => 'Waiting for the first kick' },
+  nothing_scheduled: { dot: 'bg-zinc-600', text: () => 'Nothing scheduled yet' },
+};
+const missed = (c: Counts24) => c.unconfirmed + c.gaveUp;
 
 /** Compatibility messages mark code with backticks; show those parts as code. */
 function Ticks({ text }: { text: string }) {
   return <>{text.split(/(`[^`]+`)/).map((part, i) => (part.startsWith('`') ? <Code key={i}>{part.slice(1, -1)}</Code> : part))}</>;
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Stat({ label, value, sub, children }: { label: string; value: ReactNode; sub: string; children?: ReactNode }) {
   return (
-    <div className="border-t border-white/10 pt-4">
-      <dt className="truncate text-base/6 text-zinc-400 sm:text-sm/6">{label}</dt>
-      <dd className="mt-2 text-3xl font-semibold tracking-tight tabular-nums sm:text-2xl">{value}</dd>
-      {sub && <dd className="mt-1 truncate text-sm/6 text-zinc-500">{sub}</dd>}
+    <div className="group relative p-4">
+      <dt className="font-mono text-[0.6875rem]/4 tracking-wider text-zinc-500 uppercase">{label}</dt>
+      <dd className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</dd>
+      <p className="mt-1 truncate text-xs/5 text-zinc-500">{sub}</p>
+      {children}
     </div>
   );
 }
 
-const schedules = (w: WorkflowRow) => w.schedules.map((s) => `${s.cron}${s.tz !== 'UTC' ? ` ${s.tz}` : ''}`).join(' · ');
-
-function WorkflowRowView({ w, installationId, floor, ticks }: { w: WorkflowRow; installationId: number; floor: number; ticks: Tick[] }) {
-  const st = STATUS[w.status];
-  const scheduled = w.schedules.length > 0;
+function ScheduleRow({ w, installationId, slots, floor }: { w: WorkflowRow; installationId: number; slots: SlotView[]; floor: number }) {
+  const active = w.status === 'active';
+  const dot = w.status === 'needs_fix' || missed(w.c24) ? 'bg-red-500' : w.status === 'limited' ? 'bg-zinc-600' : w.c24.late ? 'bg-orange-300' : 'bg-emerald-400';
+  const crons = w.schedules.map((s) => `${s.cron}${s.tz !== 'UTC' ? ` ${s.tz}` : ''}`).join(' · ');
+  const words = w.schedules.length === 1 ? `${humanCron(w.schedules[0].cron)} · ${w.schedules[0].tz}` : `${w.schedules.length} schedules`;
+  const plain = w.schedules.some((x) => humanCron(x.cron) !== x.cron); // raw cron adds nothing when there are no plain words
   return (
-    <li className="py-5">
-      <div className="@container">
-        <div className="grid items-center gap-x-6 gap-y-3 @3xl:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_7rem]">
-          <div className="min-w-0">
-            <div className="flex items-center gap-x-2.5">
-              <p className="truncate text-base/6 font-medium sm:text-sm/6">
-                {scheduled ? <Link href={`/dashboard/${installationId}/workflows/${w.id}`} className="hover:underline">{w.name}</Link> : w.name}
-              </p>
-              <Badge tone={st.tone}>{st.label}</Badge>
+    <li className={w.status === 'limited' ? 'opacity-60' : ''}>
+      <Link href={`/dashboard/${installationId}/workflows/${w.id}`} className="group @container block px-5 py-4 transition hover:bg-white/[0.03]">
+        <div className="grid items-center gap-x-6 gap-y-3 @3xl:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_8rem_1rem]">
+          <div className="flex min-w-0 items-start gap-x-3">
+            <span aria-hidden="true" className={`mt-1.5 size-2.5 shrink-0 rounded-full ${dot}`} />
+            <div className="min-w-0">
+              <p className="truncate text-sm/6 font-medium">{w.name} <span className="font-normal text-zinc-500">· {w.repo.split('/')[1]}</span></p>
+              <p className="truncate text-xs/5 text-zinc-400">{words} {plain && <span className="font-mono text-zinc-600">{crons}</span>}</p>
             </div>
-            <p className="mt-0.5 truncate font-mono text-sm/6 text-zinc-500 sm:text-xs/6">{scheduled ? schedules(w) : w.path}</p>
           </div>
-          {w.status === 'active' || w.status === 'limited' ? <SlotStrip ticks={ticks} /> : <div className="max-@3xl:hidden" />}
+          {active ? <LiveStrip slots={slots} positions={STRIP} next={!!w.nextDue} /> : <div className="max-@3xl:hidden" />}
           <div className="text-sm/5 tabular-nums @3xl:text-right">
-            {w.status === 'active' && (
-              <>
-                <p className="font-medium">{w.due24h ? `${pct(w.onTime24h, w.due24h)} on time` : 'No runs yet'}</p>
-                <p className="text-zinc-500">{w.problems24h ? <span className="text-red-300">{w.problems24h} missed</span> : `next ${relTime(w.nextDue)}`}</p>
-              </>
-            )}
+            {active && (w.c24.due
+              ? <p className="font-medium"><Counter value={`${w.c24.onTime} of ${w.c24.due}`} /> on time</p>
+              : <p className="font-medium text-zinc-400">No runs yet</p>)}
+            {active && w.nextDue && <p className="text-xs/5 text-zinc-500">next <Countdown to={w.nextDue} className="font-mono text-brand-400" /></p>}
+            {w.status === 'limited' && <p className="text-xs/5 text-zinc-400">Paused: plan limit</p>}
+            {w.status === 'needs_fix' && <p className="text-xs/5 text-red-300">Needs a fix</p>}
           </div>
+          <ChevronRightIcon aria-hidden="true" className="size-4 fill-zinc-600 transition group-hover:translate-x-0.5 group-hover:fill-zinc-300 max-@3xl:hidden" />
         </div>
-      </div>
-      {w.status === 'needs_fix' && (
-        <ul role="list" className="mt-3 space-y-1 text-base/6 text-red-300 sm:text-sm/6">
-          {w.flags.map((f) => <li key={f.message}><Ticks text={f.message} /></li>)}
-        </ul>
-      )}
-      {w.status === 'limited' && <p className="mt-3 text-base/6 text-brand-300 sm:text-sm/6">Paused because your plan’s limit is reached. Upgrade, or remove another schedule, to turn it on.</p>}
-      {w.status === 'ready' && w.suggested_diff && (
-        <div className="mt-4 max-w-2xl">
-          <p className="text-base/6 text-pretty text-zinc-400 sm:text-sm/6">
-            Uses GitHub’s <Code>schedule:</Code>. To switch, remove that block, add <Code>workflow_dispatch:</Code> under <Code>on:</Code>, and paste these lines below it. Faster than every {floor} minutes won’t run on your plan.
-          </p>
-          <div className="mt-3"><CopyBlock code={w.suggested_diff} label={w.path} /></div>
-        </div>
-      )}
+        {w.status === 'needs_fix' && (
+          <ul role="list" className="mt-2 space-y-1 pl-5.5 text-xs/5 text-red-300">{w.flags.map((f) => <li key={f.message}><Ticks text={f.message} /></li>)}</ul>
+        )}
+        {w.status === 'limited' && <p className="mt-2 pl-5.5 text-xs/5 text-zinc-400">Not running: you’re using every schedule on your plan. Remove a <Code># cronkick</Code> line elsewhere, or upgrade for more. Faster than every {floor} min also won’t run.</p>}
+      </Link>
     </li>
-  );
-}
-
-function Repo({ r, installationId, floor, ticks }: { r: RepoRow; installationId: number; floor: number; ticks: Map<number, Tick[]> }) {
-  const shown = r.workflows.filter((w) => w.status !== 'none').sort((a, b) => ORDER[a.status] - ORDER[b.status]);
-  const hidden = r.workflows.length - shown.length;
-  return (
-    <section>
-      <div className="flex items-center justify-between gap-x-4 border-b border-white/10 pb-3">
-        <h3 className="min-w-0 truncate font-mono text-base/6 font-medium sm:text-sm/6">{r.full_name}</h3>
-        <a href={`https://github.com/${r.full_name}/actions`} className="shrink-0 text-sm/6 text-zinc-500 hover:text-white">Actions <span aria-hidden="true">↗</span></a>
-      </div>
-      {r.workflows.length === 0 ? (
-        <p className="py-5 text-base/6 text-zinc-500 sm:text-sm/6">No workflow files in <Code>.github/workflows</Code>.</p>
-      ) : (
-        <>
-          {shown.length > 0 && <ul role="list" className="divide-y divide-white/5">{shown.map((w) => <WorkflowRowView key={w.id} w={w} installationId={installationId} floor={floor} ticks={ticks.get(w.id) ?? Array(STRIP).fill('idle')} />)}</ul>}
-          {hidden > 0 && <p className={`text-base/6 text-zinc-500 sm:text-sm/6 ${shown.length ? 'border-t border-white/5 pt-4' : 'py-5'}`}>{hidden} other workflow{hidden === 1 ? '' : 's'} without a schedule.</p>}
-        </>
-      )}
-    </section>
-  );
-}
-
-function GettingStarted({ manageUrl, repoCount }: { manageUrl: string; repoCount: number }) {
-  return (
-    <section className="rounded-2xl bg-zinc-900/60 p-6 inset-ring inset-ring-white/10 sm:p-8">
-      <h2 className="text-lg font-semibold">Schedule your first workflow</h2>
-      <ol role="list" className="mt-6 space-y-6 text-base/7 sm:text-sm/6">
-        <li className="flex gap-x-3">
-          <CheckCircleIcon aria-hidden="true" className="size-4 h-lh shrink-0 fill-emerald-400" />
-          <div>
-            <p className="font-medium">App installed on {repoCount} {repoCount === 1 ? 'repository' : 'repositories'}</p>
-            <p className="text-zinc-400">Need another repo? <a href={manageUrl} className="font-medium text-white underline">Choose repositories on GitHub</a>.</p>
-          </div>
-        </li>
-        <li className="flex gap-x-3">
-          <span aria-hidden="true" className="w-4 shrink-0 text-center font-mono text-brand-400">2</span>
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Add a <Code># cronkick</Code> comment to a workflow</p>
-            <p className="text-zinc-400">Put it next to <Code>workflow_dispatch:</Code>. Already using <Code>schedule:</Code>? The workflows below show the exact lines.</p>
-            <div className="mt-3 max-w-2xl"><CopyBlock code={STARTER} label=".github/workflows/nightly.yml" /></div>
-          </div>
-        </li>
-        <li className="flex gap-x-3">
-          <span aria-hidden="true" className="w-4 shrink-0 text-center font-mono text-brand-400">3</span>
-          <div>
-            <p className="font-medium">Push to your default branch</p>
-            <p className="text-zinc-400">Cronkick reads the file on push. The workflow turns Active here, and every run gets a tick.</p>
-          </div>
-        </li>
-      </ol>
-    </section>
   );
 }
 
@@ -143,39 +89,132 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const s = await requireInstallation(id, `/dashboard/${id}`);
   const inst = (await installationsFor(db, s.installs)).find((i) => i.id === id)!;
   const now = new Date();
-  const [{ repos, totals }, ticks] = await Promise.all([overview(db, id, now), recentTicks(db, id, now, STRIP)]);
+  const [{ repos, totals }, slots, items, reports] = await Promise.all([
+    overview(db, id, now), recentSlots(db, id, now, STRIP), activity(db, id, now, 8), probeReport(db, now).catch(() => []),
+  ]);
   const limits = PLANS[inst.plan];
-  const anyActive = repos.some((r) => r.workflows.some((w) => w.status === 'active'));
+  const all = repos.flatMap((r) => r.workflows);
+  const branch = new Map(repos.map((r) => [r.full_name, r.default_branch]));
+  const mine = all.filter((w) => w.status === 'active' || w.status === 'limited' || w.status === 'needs_fix')
+    .sort((a, b) => ({ needs_fix: 0, active: 1, limited: 2 } as Record<string, number>)[a.status] - ({ needs_fix: 0, active: 1, limited: 2 } as Record<string, number>)[b.status]);
+  const candidates: Candidate[] = all.filter((w) => w.status === 'ready' && w.suggested_diff).map((w) => {
+    const p = switchPlan(w.suggested_diff!, limits.floorMinutes);
+    return {
+      id: w.id, name: w.name, path: w.path, repo: w.repo, editUrl: `https://github.com/${w.repo}/edit/${branch.get(w.repo)}/${w.path}`,
+      cadence: p.crons.map((c) => humanCron(c.cron)).join(' · '), before: p.before, after: p.after, clamped: p.clamped, tooFast: p.tooFast,
+    };
+  });
+  const switchSection = <SwitchSection candidates={candidates} plan={inst.plan} floor={limits.floorMinutes} />;
+
+  // Until the first kick, the page is the setup guide; it flips live when Cronkick sees the push.
+  // A paused or broken workflow keeps the normal overview, so its reason is always on screen.
+  if (mine.every((w) => w.status === 'active') && items.length === 0) {
+    const nk = totals.nextKick;
+    return (
+      <>
+        <FirstRun installationId={id} repos={repos.map((r) => r.full_name)} manageUrl={manageReposUrl(inst)} floor={limits.floorMinutes} candidates={candidates.length}
+          found={nk ? { workflowId: nk.workflowId, workflow: nk.workflow, repo: nk.repo, due: nk.due } : null} />
+        {candidates.length > 0 && <div className={`${container} pb-16`}>{switchSection}</div>}
+        <DispatchToasts items={items} />
+      </>
+    );
+  }
+
+  const v = VERDICT[totals.verdict];
+  const c = totals.c24;
+  const nk = totals.nextKick;
+  const bench = reports.filter((r) => r.stats.expected > 0).sort((a, b) => b.stats.expected - a.stats.expected)[0];
   return (
-    <div className="space-y-12">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Workflows</h1>
-          <p className="mt-1 text-base/6 text-zinc-400 sm:text-sm/6">{inst.account_login} · {inst.plan === 'pro' ? 'Pro' : 'Free'} · up to {limits.schedules} schedules, every {limits.floorMinutes} min or slower</p>
+    <>
+      <section className="relative isolate overflow-hidden border-b border-white/5">
+        <div aria-hidden="true" className="time-grid absolute inset-0 -z-10" />
+        <div aria-hidden="true" className="hero-glow absolute inset-0 -z-10" />
+        <div className={`${container} pt-12 pb-8`}>
+          <p className="font-mono text-[0.6875rem]/5 tracking-wider text-zinc-500 uppercase">{inst.account_login} · Overview</p>
+          <div className="mt-4 flex flex-wrap items-end justify-between gap-6">
+            <div className="min-w-0">
+              <h1 className="flex items-center gap-x-3 text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+                <span aria-hidden="true" className="relative flex size-3 shrink-0">
+                  {totals.verdict === 'on_time' && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-40" />}
+                  <span className={`relative inline-flex size-3 rounded-full ${v.dot}`} />
+                </span>
+                {v.text(totals.activeSchedules)}
+              </h1>
+              <p className="mt-2 text-sm/6 text-zinc-400">
+                {c.due ? <><Counter value={`${c.onTime} of ${c.due}`} /> runs in the last 24 h started within 30 s of their scheduled time.</> : 'No runs in the last 24 h yet.'}
+              </p>
+            </div>
+            {nk && (
+              <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-950/80 p-4 inset-ring inset-ring-white/10 backdrop-blur sm:w-[22rem]">
+                <div aria-hidden="true" className="absolute inset-x-12 top-0 h-px bg-linear-to-r from-transparent via-brand-300/60 to-transparent" />
+                <p className="font-mono text-[0.6875rem]/4 tracking-wider text-zinc-500 uppercase">Next kick</p>
+                <div className="mt-2 flex items-end justify-between gap-4">
+                  <Link href={`/dashboard/${id}/workflows/${nk.workflowId}`} className="min-w-0 hover:underline">
+                    <p className="truncate text-sm/6 font-medium">{nk.workflow}</p>
+                    <p className="truncate text-xs/5 text-zinc-500">{nk.repo.split('/')[1]}{nk.alsoDue ? ` +${nk.alsoDue} more at the same time` : ''}</p>
+                  </Link>
+                  <Countdown to={nk.due} className="font-mono text-3xl font-medium text-brand-400" />
+                </div>
+              </div>
+            )}
+          </div>
+          <dl className="mt-8 grid grid-cols-2 divide-white/10 rounded-2xl bg-zinc-950/60 inset-ring inset-ring-white/10 max-lg:divide-y lg:grid-cols-4 lg:divide-x">
+            <Stat label="On time · 24 h" value={<><Counter value={c.onTime} /><span className="text-zinc-500"> of {c.due}</span></>} sub="started within 30 s">
+              <div role="tooltip" className="pointer-events-none absolute top-full left-4 z-20 mt-2 hidden w-64 rounded-xl bg-zinc-800 p-3 text-xs/5 shadow-2xl ring-1 ring-white/10 group-hover:block">
+                <p className="mb-1.5 font-medium">Last 24 h, by outcome</p>
+                <p className="flex justify-between"><span>On time (≤ 30 s)</span><b>{c.onTime}</b></p>
+                <p className="flex justify-between"><span>Late</span><b>{c.late}</b></p>
+                <p className="flex justify-between"><span>Unconfirmed</span><b>{c.unconfirmed}</b></p>
+                <p className="flex justify-between"><span>Gave up</span><b>{c.gaveUp}</b></p>
+                <p className="mt-2 text-zinc-400">Measured from the scheduled time to Cronkick’s request to GitHub.</p>
+              </div>
+            </Stat>
+            <Stat label="Runs · 24 h" value={<Counter value={c.due} />} sub={`${c.onTime} on time · ${c.late} late · ${missed(c)} missed`} />
+            <Stat label="Start delay" value={<span className="font-mono font-medium">{fmtDelay(totals.medianDelayMs)}</span>} sub={totals.maxDelayMs === null ? 'median' : `median · slowest ${fmtDelay(totals.maxDelayMs)}`} />
+            <Stat label="Job results" value={<><Counter value={c.passed} /><span className="text-zinc-500"> passed</span></>} sub={`${c.failed} failed · reported by GitHub`} />
+          </dl>
         </div>
-        <ButtonLink href={manageReposUrl(inst)} size="sm">Choose repositories</ButtonLink>
-      </div>
+      </section>
 
-      <div className="@container">
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-6 @2xl:grid-cols-4">
-          <Stat label="Active schedules" value={String(totals.activeSchedules)} sub={`of ${limits.schedules} on your plan`} />
-          <Stat label="Runs, last 24 h" value={String(totals.due24h)} />
-          <Stat label="On time (≤ 30 s)" value={pct(totals.onTime24h, totals.due24h)} sub="first trigger after due time" />
-          <Stat label="Next run" value={relTime(totals.nextDue)} sub={totals.problems24h ? `${totals.problems24h} missed in 24 h` : 'nothing missed in 24 h'} />
-        </dl>
-      </div>
+      <div className={`${container} space-y-10 py-10`}>
+        <section>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <h2 className="text-base/7 font-semibold">Your schedules</h2>
+            <ul role="list" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs/5 text-zinc-400">
+              <li className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-ontime" />on time</li>
+              <li className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-late" />late</li>
+              <li className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-missed" />missed</li>
+              <li className="flex items-center gap-1.5"><span className="tick-skip size-2 rounded-sm" />skipped</li>
+              <li className="flex items-center gap-1.5"><span className="size-2 rounded-sm shadow-[inset_0_0_0_1.5px_var(--color-brand-500)]" />next</li>
+              <li className="flex items-center gap-1.5"><span className="tick-track inline-block h-px w-4 self-center" />before tracking</li>
+            </ul>
+          </div>
+          <ul role="list" className="mt-4 divide-y divide-white/5 overflow-hidden rounded-2xl inset-ring inset-ring-white/10">
+            {mine.map((w) => <ScheduleRow key={w.id} w={w} installationId={id} slots={slots.get(w.id) ?? []} floor={limits.floorMinutes} />)}
+          </ul>
+        </section>
 
-      {!anyActive && <GettingStarted manageUrl={manageReposUrl(inst)} repoCount={repos.length} />}
+        {switchSection}
 
-      <div className="space-y-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">By repository</h2>
-          {anyActive && <div className="flex items-center gap-x-4"><span className="text-sm/6 text-zinc-500 sm:text-xs/6">Last {STRIP} slots</span><StripLegend /></div>}
-        </div>
-        {repos.length ? repos.map((r) => <Repo key={r.id} r={r} installationId={id} floor={limits.floorMinutes} ticks={ticks} />) : (
-          <p className="text-base/6 text-zinc-400 sm:text-sm/6">No repositories yet. <a href={manageReposUrl(inst)} className="font-medium text-white underline">Choose repositories on GitHub</a>.</p>
-        )}
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="min-w-0">
+            <div className="flex items-end justify-between"><h2 className="text-base/7 font-semibold">Activity</h2><span className="text-xs/5 text-zinc-500">newest first</span></div>
+            <div className="mt-4"><ActivityFeed items={items} /></div>
+          </div>
+          <Link href="/lateness" className="group relative flex flex-col overflow-hidden rounded-2xl bg-zinc-950 p-5 inset-ring inset-ring-white/10 transition hover:-translate-y-0.5 hover:inset-ring-white/20">
+            <div aria-hidden="true" className="hero-glow absolute inset-0 opacity-0 transition group-hover:opacity-100" />
+            <p className="relative font-mono text-[0.6875rem]/4 tracking-wider text-zinc-500 uppercase">Public benchmark</p>
+            <p className="relative mt-3 text-sm/6 font-medium">How late is GitHub’s own scheduler?</p>
+            <p className="relative mt-2 text-xs/5 text-pretty text-zinc-400">
+              {bench && bench.stats.p50Sec !== null
+                ? <>In our probe repos over the last 7 days, GitHub’s <code className="font-mono">schedule:</code> ({humanCron(bench.cron).toLowerCase()}) started a median {Math.round(bench.stats.p50Sec / 60)} min late and never ran {Math.round(bench.stats.missingShare * 100)}% of the time.</>
+                : <>We’re measuring GitHub’s <code className="font-mono">schedule:</code> in public probe repos. Numbers appear once a few days of data are in.</>}
+            </p>
+            <span className="relative mt-auto pt-4 text-xs/5 font-medium text-brand-400">See the numbers →</span>
+          </Link>
+        </section>
       </div>
-    </div>
+      <DispatchToasts items={items} />
+    </>
   );
 }

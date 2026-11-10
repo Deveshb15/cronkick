@@ -32,16 +32,21 @@ export function Badge({ tone = 'zinc', children }: { tone?: Tone; children: Reac
   return <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-sm/5 font-medium whitespace-nowrap inset-ring sm:text-xs/5 ${tones[tone]}`}>{children}</span>;
 }
 
-export const STATUS = {
-  active: { label: 'Active', tone: 'green' },
-  limited: { label: 'Paused: plan limit', tone: 'amber' },
-  needs_fix: { label: 'Needs a fix', tone: 'red' },
-  ready: { label: 'Ready to switch', tone: 'blue' },
-  none: { label: 'Not scheduled', tone: 'zinc' },
-} as const;
-
+// Honest slot words: what Cronkick knows, never more. The job's own result is shown separately (JobResult).
 export const SLOT_TONE: Record<string, Tone> = {
-  accepted: 'green', fired: 'green', unknown: 'red', expired: 'red', skipped: 'zinc', pending: 'zinc', dispatching: 'blue',
+  accepted: 'green', fired: 'blue', unknown: 'red', expired: 'red', skipped: 'zinc', pending: 'zinc', dispatching: 'blue',
+};
+export const SLOT_LABEL: Record<string, string> = {
+  accepted: 'Started', fired: 'Sent', unknown: 'Unconfirmed', expired: 'Gave up', skipped: 'Skipped', pending: 'Due', dispatching: 'Sending',
+};
+export const SLOT_HELP: Record<string, string> = {
+  accepted: 'GitHub created the run.',
+  fired: 'GitHub accepted the request; the run is not linked yet.',
+  unknown: 'Cronkick sent it but could not confirm GitHub got it, so it did not resend.',
+  expired: 'GitHub kept failing until the deadline, so Cronkick skipped it rather than run it late.',
+  skipped: 'Not sent: the schedule was paused or changed.',
+  pending: 'Waiting for its scheduled time.',
+  dispatching: 'Sending to GitHub now.',
 };
 
 export function Code({ children }: { children: ReactNode }) {
@@ -53,16 +58,23 @@ export function Eyebrow({ children }: { children: ReactNode }) {
   return <p className="font-mono text-sm/6 font-medium tracking-wide text-brand-400 uppercase sm:text-xs/6">{children}</p>;
 }
 
-const SLOT_ICON = { accepted: CheckCircleIcon, fired: CheckCircleIcon, unknown: ExclamationTriangleIcon, expired: XCircleIcon, skipped: MinusCircleIcon, pending: ClockIcon, dispatching: ClockIcon } as const;
-const SLOT_LABEL: Record<string, string> = { accepted: 'Ran', fired: 'Triggered', unknown: 'Unknown', expired: 'Expired', skipped: 'Skipped', pending: 'Pending', dispatching: 'Triggering' };
+const SLOT_ICON = { accepted: CheckCircleIcon, fired: ClockIcon, unknown: ExclamationTriangleIcon, expired: XCircleIcon, skipped: MinusCircleIcon, pending: ClockIcon, dispatching: ClockIcon } as const;
 
 /** Slot status pill with an icon, so state reads without relying on colour alone. */
 export function SlotPill({ state }: { state: string }) {
   const Icon = SLOT_ICON[state as keyof typeof SLOT_ICON] ?? ClockIcon;
   const tone = tones[SLOT_TONE[state] ?? 'zinc'];
   return (
-    <span className={`inline-flex items-center gap-x-1 rounded-md py-0.5 pr-1.5 pl-0.5 text-sm/5 font-medium whitespace-nowrap inset-ring sm:text-xs/5 ${tone}`}>
+    <span title={SLOT_HELP[state]} className={`inline-flex items-center gap-x-1 rounded-md py-0.5 pr-1.5 pl-0.5 text-sm/5 font-medium whitespace-nowrap inset-ring sm:text-xs/5 ${tone}`}>
       <Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />{SLOT_LABEL[state] ?? state}
     </span>
   );
+}
+
+/** The GitHub job's own result, only when GitHub reported one. */
+export function JobResult({ conclusion }: { conclusion: string | null }) {
+  if (!conclusion) return <span className="text-zinc-500">Not reported yet</span>;
+  if (conclusion === 'success') return <span className="text-emerald-300">✓ Passed</span>;
+  if (conclusion === 'neutral' || conclusion === 'skipped') return <span className="text-zinc-400">{conclusion}</span>;
+  return <span className="text-red-300">✕ {conclusion === 'failure' ? 'Failed' : conclusion.replace('_', ' ')}</span>;
 }

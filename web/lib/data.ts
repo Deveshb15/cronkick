@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { PLANS, type PlanName } from '../../src/plans.ts';
 
-/** One tick per slot in the dashboard strips. */
+/** Colour of one slot in the dashboard strips. */
 export type Tick = 'ontime' | 'late' | 'missed' | 'idle';
 
 /** Fired within 30 s is on time; fired later is late; unknown/expired count as missed; anything not run is idle. */
@@ -11,22 +11,29 @@ export function toTick(state: string, delayMs: number | null): Tick {
   return 'idle';
 }
 
-/** The last `n` due slots of every workflow in an installation, oldest first, left-padded with idle ticks. */
-export async function recentTicks(db: pg.Pool, installationId: number, now: Date, n = 48): Promise<Map<number, Tick[]>> {
+/** One due slot as the UI shows it. Times are ISO strings so client components can format them in local time. */
+export type SlotView = {
+  id: number; workflowId: number; due: string; state: string; tick: Tick;
+  delayMs: number | null; runUrl: string | null; conclusion: string | null;
+};
+const slotView = (r: any): SlotView => {
+  const delayMs = r.delay_ms === null ? null : Number(r.delay_ms);
+  return { id: Number(r.id), workflowId: Number(r.workflow_id), due: new Date(r.due_at).toISOString(), state: r.state, tick: toTick(r.state, delayMs), delayMs, runUrl: r.run_url, conclusion: r.conclusion };
+};
+
+/** The last `n` due slots of every workflow in an installation, oldest first. No padding: the strip draws the empty span. */
+export async function recentSlots(db: pg.Pool, installationId: number, now: Date, n = 48): Promise<Map<number, SlotView[]>> {
   const { rows } = await db.query(
-    `SELECT workflow_id, state, extract(epoch FROM first_attempt_at - due_at) * 1000 AS delay_ms
-       FROM (SELECT *, row_number() OVER (PARTITION BY workflow_id ORDER BY due_at DESC) AS rn
-               FROM slots WHERE installation_id = $1 AND due_at <= $2) s
-      WHERE rn <= $3 ORDER BY workflow_id, due_at`,
+    // Per workflow via the (workflow_id, due_at) index: reads ~n rows each, not the account's whole history.
+    `SELECT s.id, s.workflow_id, s.due_at, s.state, s.run_url, s.conclusion, extract(epoch FROM s.first_attempt_at - s.due_at) * 1000 AS delay_ms
+       FROM workflows w JOIN repos r ON r.id = w.repo_id
+       CROSS JOIN LATERAL (SELECT * FROM slots WHERE workflow_id = w.id AND due_at <= $2 ORDER BY due_at DESC LIMIT $3) s
+      WHERE r.installation_id = $1 AND s.installation_id = $1
+      ORDER BY s.workflow_id, s.due_at`,
     [installationId, now, n],
   );
-  const out = new Map<number, Tick[]>();
-  for (const r of rows) {
-    const list = out.get(r.workflow_id) ?? [];
-    list.push(toTick(r.state, r.delay_ms === null ? null : Number(r.delay_ms)));
-    out.set(r.workflow_id, list);
-  }
-  for (const [k, v] of out) out.set(k, [...Array<Tick>(Math.max(0, n - v.length)).fill('idle'), ...v]);
+  const out = new Map<number, SlotView[]>();
+  for (const r of rows) out.set(Number(r.workflow_id), [...(out.get(Number(r.workflow_id)) ?? []), slotView(r)]);
   return out;
 }
 
@@ -49,17 +56,36 @@ export async function installationsFor(db: pg.Pool, ids: number[]): Promise<Inst
   return rows;
 }
 
-export type WorkflowRow = {
-  id: number; name: string; path: string; flags: Flag[]; suggested_diff: string | null; schedules: Schedule[];
-  status: WorkflowStatus; due24h: number; onTime24h: number; problems24h: number;
-  lastDue: Date | null; lastState: string | null; nextDue: Date | null;
-};
-export type RepoRow = { id: number; full_name: string; workflows: WorkflowRow[] };
+/** Last-24-hour outcome counts. `missed` = unconfirmed + gave up. */
+export type Counts24 = { due: number; onTime: number; late: number; unconfirmed: number; gaveUp: number; passed: number; failed: number };
+const COUNTS_SQL = `
+  count(*) FILTER (WHERE state <> 'skipped')::int AS due,
+  count(*) FILTER (WHERE state IN ('fired', 'accepted') AND first_attempt_at - due_at <= interval '30 seconds')::int AS on_time,
+  count(*) FILTER (WHERE state IN ('fired', 'accepted') AND first_attempt_at - due_at > interval '30 seconds')::int AS late,
+  count(*) FILTER (WHERE state = 'unknown')::int AS unconfirmed,
+  count(*) FILTER (WHERE state = 'expired')::int AS gave_up,
+  count(*) FILTER (WHERE conclusion = 'success')::int AS passed,
+  count(*) FILTER (WHERE conclusion IS NOT NULL AND conclusion NOT IN ('success', 'neutral', 'skipped'))::int AS failed`;
+const counts = (r: any): Counts24 => ({
+  due: r?.due ?? 0, onTime: r?.on_time ?? 0, late: r?.late ?? 0, unconfirmed: r?.unconfirmed ?? 0, gaveUp: r?.gave_up ?? 0, passed: r?.passed ?? 0, failed: r?.failed ?? 0,
+});
 
-/** Everything the overview needs for one installation, in three queries. */
+/** One word for how a workflow (or a whole account) did in the last 24 h. */
+export type Health = 'on_time' | 'late' | 'missed' | 'no_runs';
+export const healthOf = (c: Counts24): Health => (c.unconfirmed + c.gaveUp ? 'missed' : c.late ? 'late' : c.due ? 'on_time' : 'no_runs');
+
+export type WorkflowRow = {
+  id: number; repo: string; name: string; path: string; flags: Flag[]; suggested_diff: string | null; schedules: Schedule[];
+  status: WorkflowStatus; c24: Counts24; nextDue: string | null;
+};
+export type RepoRow = { id: number; full_name: string; default_branch: string; workflows: WorkflowRow[] };
+export type Verdict = 'nothing_scheduled' | 'needs_fix' | 'missed' | 'late' | 'on_time' | 'no_runs';
+export type NextKick = { due: string; workflowId: number; workflow: string; repo: string; alsoDue: number } | null;
+
+/** Everything the overview needs for one installation. All 24 h windows are due slots only: future pending slots aren't runs yet. */
 export async function overview(db: pg.Pool, installationId: number, now: Date) {
-  const repos = (await db.query<{ id: number; full_name: string }>(
-    'SELECT id, full_name FROM repos WHERE installation_id = $1 AND active ORDER BY full_name', [installationId],
+  const repos = (await db.query<{ id: number; full_name: string; default_branch: string }>(
+    'SELECT id, full_name, default_branch FROM repos WHERE installation_id = $1 AND active ORDER BY full_name', [installationId],
   )).rows;
 
   const workflows = (await db.query(
@@ -71,48 +97,110 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
       GROUP BY w.id ORDER BY w.path`, [installationId],
   )).rows;
 
-  // Per workflow, the last 24 hours of slots that are already due (future pending slots are not runs yet): how many, how many fired within 30 s, how many went wrong.
-  const stats = new Map((await db.query(
-    `SELECT workflow_id,
-            count(*) FILTER (WHERE due_at <= $2 AND state <> 'skipped')::int AS due,
-            count(*) FILTER (WHERE due_at <= $2 AND first_attempt_at - due_at <= interval '30 seconds'
-                               AND state IN ('fired', 'accepted'))::int AS on_time,
-            count(*) FILTER (WHERE due_at <= $2 AND state IN ('unknown', 'expired'))::int AS problems,
-            max(due_at) FILTER (WHERE due_at <= $2) AS last_due,
-            (array_agg(state ORDER BY due_at DESC) FILTER (WHERE due_at <= $2))[1] AS last_state,
-            min(due_at) FILTER (WHERE due_at > $2 AND state = 'pending') AS next_due
-       FROM slots WHERE installation_id = $1 AND due_at > $2::timestamptz - interval '24 hours'
-      GROUP BY workflow_id`, [installationId, now],
-  )).rows.map((r) => [r.workflow_id as number, r]));
+  const day = `installation_id = $1 AND due_at > $2::timestamptz - interval '24 hours' AND due_at <= $2`;
+  const [perWf, delays, next] = await Promise.all([
+    db.query(`SELECT workflow_id, ${COUNTS_SQL} FROM slots WHERE ${day} GROUP BY workflow_id`, [installationId, now]),
+    // Start delay of the slots Cronkick actually sent, in ms.
+    db.query(
+      `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY d) AS median, max(d) AS max
+         FROM (SELECT extract(epoch FROM first_attempt_at - due_at) * 1000 AS d FROM slots
+                WHERE ${day} AND state IN ('fired', 'accepted') AND first_attempt_at IS NOT NULL) x`,
+      [installationId, now],
+    ),
+    db.query(
+      `SELECT workflow_id, min(due_at) AS due FROM slots
+        WHERE installation_id = $1 AND due_at > $2 AND state = 'pending' GROUP BY workflow_id`,
+      [installationId, now],
+    ),
+  ]);
+  const stats = new Map(perWf.rows.map((r) => [Number(r.workflow_id), counts(r)]));
+  const nextBy = new Map(next.rows.map((r) => [Number(r.workflow_id), new Date(r.due)]));
 
   const out: RepoRow[] = repos.map((r) => ({ ...r, workflows: [] }));
   const byRepo = new Map(out.map((r) => [r.id, r]));
   for (const w of workflows) {
-    const s = stats.get(w.id);
-    byRepo.get(w.repo_id)?.workflows.push({
-      id: w.id, name: w.name, path: w.path, flags: w.flags, suggested_diff: w.suggested_diff, schedules: w.schedules,
-      status: workflowStatus(w),
-      due24h: s?.due ?? 0, onTime24h: s?.on_time ?? 0, problems24h: s?.problems ?? 0,
-      lastDue: s?.last_due ?? null, lastState: s?.last_state ?? null, nextDue: s?.next_due ?? null,
+    const repo = byRepo.get(w.repo_id);
+    if (!repo) continue;
+    const n = nextBy.get(Number(w.id));
+    repo.workflows.push({
+      id: Number(w.id), repo: repo.full_name, name: w.name, path: w.path, flags: w.flags, suggested_diff: w.suggested_diff, schedules: w.schedules,
+      status: workflowStatus(w), c24: stats.get(Number(w.id)) ?? counts(null), nextDue: n ? n.toISOString() : null,
     });
   }
+
   const all = out.flatMap((r) => r.workflows);
+  const live = all.filter((w) => w.status === 'active');
+  const c24 = live.reduce<Counts24>((a, w) => ({
+    due: a.due + w.c24.due, onTime: a.onTime + w.c24.onTime, late: a.late + w.c24.late, unconfirmed: a.unconfirmed + w.c24.unconfirmed,
+    gaveUp: a.gaveUp + w.c24.gaveUp, passed: a.passed + w.c24.passed, failed: a.failed + w.c24.failed,
+  }), counts(null));
+
+  // The soonest pending slot across active workflows, and how many others are due at that same moment.
+  const upcoming = live.filter((w) => w.nextDue).sort((a, b) => a.nextDue!.localeCompare(b.nextDue!));
+  const first = upcoming[0];
+  const nextKick: NextKick = first ? {
+    due: first.nextDue!, workflowId: first.id, workflow: first.name, repo: first.repo,
+    alsoDue: upcoming.filter((w) => w.nextDue === first.nextDue).length - 1,
+  } : null;
+
+  const health = healthOf(c24);
+  const verdict: Verdict = !live.length ? 'nothing_scheduled' : all.some((w) => w.status === 'needs_fix') ? 'needs_fix' : health === 'on_time' ? 'on_time' : health;
+  const d = delays.rows[0];
   const totals = {
-    activeSchedules: all.filter((w) => w.status === 'active').reduce((n, w) => n + w.schedules.filter((s) => s.status === 'active').length, 0),
-    due24h: all.reduce((n, w) => n + w.due24h, 0),
-    onTime24h: all.reduce((n, w) => n + w.onTime24h, 0),
-    problems24h: all.reduce((n, w) => n + w.problems24h, 0),
-    nextDue: all.map((w) => w.nextDue).filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime())[0] ?? null,
+    activeSchedules: live.reduce((n, w) => n + w.schedules.filter((s) => s.status === 'active').length, 0),
+    c24,
+    medianDelayMs: d?.median == null ? null : Number(d.median),
+    maxDelayMs: d?.max == null ? null : Number(d.max),
+    nextKick,
+    verdict,
   };
   return { repos: out, totals };
 }
 
-export const MAX_ROWS = 500;
+export type ActivityItem = SlotView & { workflow: string; repo: string };
 
-/** Slot history for one workflow, limited by plan; null if it isn't in this installation. */
-export async function workflowHistory(db: pg.Pool, installationId: number, workflowId: number, now: Date) {
+/** The latest slots Cronkick acted on across an installation, newest first. */
+export async function activity(db: pg.Pool, installationId: number, now: Date, limit = 8): Promise<ActivityItem[]> {
+  const { rows } = await db.query(
+    `SELECT s.id, s.workflow_id, s.due_at, s.state, s.run_url, s.conclusion,
+            extract(epoch FROM s.first_attempt_at - s.due_at) * 1000 AS delay_ms, w.name AS workflow, r.full_name AS repo
+       FROM slots s JOIN workflows w ON w.id = s.workflow_id JOIN repos r ON r.id = s.repo_id
+      WHERE s.installation_id = $1 AND s.due_at <= $2 AND s.state NOT IN ('pending', 'dispatching', 'skipped')
+      ORDER BY s.due_at DESC, s.id DESC LIMIT $3`,
+    [installationId, now, limit],
+  );
+  return rows.map((r) => ({ ...slotView(r), workflow: r.workflow, repo: r.repo }));
+}
+
+/** Per account: active schedules and last-24-hour health, for the account switcher. */
+export async function accountHealth(db: pg.Pool, ids: number[], now: Date): Promise<Map<number, { schedules: number; health: Health }>> {
+  const [sched, slots] = await Promise.all([
+    db.query(
+      `SELECT r.installation_id AS id, count(*)::int AS n FROM schedules s JOIN workflows w ON w.id = s.workflow_id JOIN repos r ON r.id = w.repo_id
+        WHERE r.installation_id = ANY($1) AND r.active AND w.present AND s.status = 'active' GROUP BY r.installation_id`, [ids],
+    ),
+    db.query(
+      `SELECT installation_id AS id, ${COUNTS_SQL} FROM slots
+        WHERE installation_id = ANY($1) AND due_at > $2::timestamptz - interval '24 hours' AND due_at <= $2 GROUP BY installation_id`, [ids, now],
+    ),
+  ]);
+  const n = new Map(sched.rows.map((r) => [Number(r.id), r.n as number]));
+  const c = new Map(slots.rows.map((r) => [Number(r.id), counts(r)]));
+  return new Map(ids.map((id) => [id, { schedules: n.get(id) ?? 0, health: healthOf(c.get(id) ?? counts(null)) }]));
+}
+
+export const MAX_ROWS = 500;
+export type HistoryFilter = 'late' | 'missed' | 'failed';
+const FILTERS: Record<HistoryFilter, string> = {
+  late: `state IN ('fired', 'accepted') AND first_attempt_at - due_at > interval '30 seconds'`,
+  missed: `state IN ('unknown', 'expired')`,
+  failed: `conclusion IS NOT NULL AND conclusion NOT IN ('success', 'neutral', 'skipped')`,
+};
+
+/** Slot history for one workflow, limited by plan and optionally filtered; null if it isn't in this installation. */
+export async function workflowHistory(db: pg.Pool, installationId: number, workflowId: number, now: Date, filter?: HistoryFilter) {
   const w = (await db.query(
-    `SELECT w.id, w.name, w.path, r.full_name, r.default_branch,
+    `SELECT w.id, w.name, w.path, w.present, w.flags, r.full_name, r.default_branch,
             coalesce((SELECT json_agg(json_build_object('cron', s.cron, 'tz', s.tz, 'status', s.status) ORDER BY s.id) FROM schedules s WHERE s.workflow_id = w.id), '[]') AS schedules
        FROM workflows w JOIN repos r ON r.id = w.repo_id WHERE w.id = $1 AND r.installation_id = $2`,
     [workflowId, installationId],
@@ -123,30 +211,26 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
   const window = limits.historyRows
     ? `id IN (SELECT id FROM slots WHERE workflow_id = $1 AND due_at <= $2 ORDER BY due_at DESC LIMIT ${limits.historyRows})`
     : `workflow_id = $1 AND due_at <= $2 AND due_at > $2::timestamptz - interval '${limits.historyDays} days'`;
-  const slots = (await db.query(`SELECT * FROM slots WHERE ${window} ORDER BY due_at DESC LIMIT ${MAX_ROWS}`, [workflowId, now])).rows;
-  const counts: Record<string, number> = Object.fromEntries(
-    (await db.query(`SELECT state, count(*)::int AS n FROM slots WHERE ${window} GROUP BY state`, [workflowId, now])).rows.map((r) => [r.state, r.n]),
-  );
-  const next = (await db.query(`SELECT due_at FROM slots WHERE workflow_id = $1 AND due_at > $2 AND state = 'pending' ORDER BY due_at LIMIT 1`, [workflowId, now])).rows[0]?.due_at ?? null;
-  const last = slots.find((s) => s.state !== 'pending' && s.state !== 'skipped') ?? null;
-  return { workflow: w, slots, counts, next, last, limits, plan };
+  const where = filter && FILTERS[filter] ? `${window} AND ${FILTERS[filter]}` : window;
+  const [slots, all, day, next] = await Promise.all([
+    db.query(`SELECT *, extract(epoch FROM first_attempt_at - due_at) * 1000 AS delay_ms FROM slots WHERE ${where} ORDER BY due_at DESC LIMIT ${MAX_ROWS}`, [workflowId, now]),
+    db.query(`SELECT state, count(*)::int AS n FROM slots WHERE ${window} GROUP BY state`, [workflowId, now]),
+    db.query(`SELECT ${COUNTS_SQL} FROM slots WHERE workflow_id = $1 AND due_at > $2::timestamptz - interval '24 hours' AND due_at <= $2`, [workflowId, now]),
+    db.query(`SELECT due_at FROM slots WHERE workflow_id = $1 AND due_at > $2 AND state = 'pending' ORDER BY due_at LIMIT 1`, [workflowId, now]),
+  ]);
+  const c24 = counts(day.rows[0]);
+  return {
+    workflow: w,
+    slots: slots.rows.map((r) => ({ ...slotView(r), responseStatus: r.response_status as number | null, responseNote: r.response_note as string | null, matchedBy: r.matched_by as string | null, attempts: r.attempts as number })),
+    counts: Object.fromEntries(all.rows.map((r) => [r.state, r.n])) as Record<string, number>,
+    c24,
+    health: healthOf(c24),
+    next: next.rows[0] ? new Date(next.rows[0].due_at).toISOString() : null,
+    limits,
+    plan,
+  };
 }
 
 export async function setAlertEmail(db: pg.Pool, installationId: number, email: string) {
   await db.query('UPDATE installations SET alert_email = $2 WHERE id = $1', [installationId, email]);
-}
-
-/** Due slots per UTC day for one workflow, split into on time, late and missed (same rules as toTick). */
-export async function dailyRuns(db: pg.Pool, workflowId: number, now: Date, days = 14) {
-  const { rows } = await db.query(
-    `SELECT to_char(d, 'Mon DD') AS label,
-            count(s.id) FILTER (WHERE s.state IN ('fired', 'accepted') AND s.first_attempt_at - s.due_at <= interval '30 seconds')::int AS ontime,
-            count(s.id) FILTER (WHERE s.state IN ('fired', 'accepted') AND s.first_attempt_at - s.due_at > interval '30 seconds')::int AS late,
-            count(s.id) FILTER (WHERE s.state IN ('unknown', 'expired'))::int AS missed
-       FROM generate_series(date_trunc('day', $2::timestamptz) - make_interval(days => $3 - 1), date_trunc('day', $2::timestamptz), interval '1 day') d
-       LEFT JOIN slots s ON s.workflow_id = $1 AND s.due_at >= d AND s.due_at < d + interval '1 day' AND s.due_at <= $2
-      GROUP BY d ORDER BY d`,
-    [workflowId, now, days],
-  );
-  return rows as { label: string; ontime: number; late: number; missed: number }[];
 }
