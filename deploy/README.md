@@ -67,7 +67,7 @@ github.com → your avatar → **Settings → Developer settings → GitHub Apps
 After **Create GitHub App**:
 1. Note the **App ID** → `GITHUB_APP_ID`, the slug from the public page URL → `GITHUB_APP_SLUG`, and the **Client ID** → `GITHUB_CLIENT_ID`.
 2. **Generate a new client secret** → `GITHUB_CLIENT_SECRET`.
-3. **Generate a private key** (downloads a `.pem`). Turn it into one line for the env file: `awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' key.pem` → `GITHUB_PRIVATE_KEY`. Then delete the download.
+3. **Generate a private key** (downloads a `.pem`). On servers, copy it to `/etc/cronkick/github-app.pem` (`chown root:cronkick`, `chmod 640`) and set `GITHUB_PRIVATE_KEY_FILE` to that path; systemd env files can't hold multi-line values. Then delete the download.
 4. Optional: upload a logo under **Display information**.
 
 Install it on one of your own repos first (the public page → **Install**) to dogfood before anyone else does.
@@ -115,7 +115,7 @@ doctl compute firewall create --name cronkick-fw --tag-names cronkick \
 
 ## 5. Secrets and first deploy
 
-On **each** droplet, write `/etc/cronkick/env` from `.env.example` (same values on both):
+On **each** droplet, write `/etc/cronkick/env` (root, mode 600), `/etc/cronkick/github-app.pem` (root:cronkick, 640) and `/etc/cronkick/do-ca.crt` (644). Same values on both. Note `doctl` masks passwords unless you pass `--show`.
 
 ```bash
 ssh root@<ip> 'cat > /etc/cronkick/env && chmod 600 /etc/cronkick/env' < my-prod.env
