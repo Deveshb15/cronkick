@@ -6,7 +6,8 @@ cd "$(dirname "$0")/.."
 [ $# -gt 0 ] || { echo "usage: deploy/push.sh <droplet ip> [...]"; exit 1; }
 for host in "$@"; do
   echo "==> $host"
-  rsync -az --delete --exclude node_modules --exclude .git --exclude test --exclude docs --exclude .env ./ "root@$host:/opt/cronkick/"
+  # Only files tracked in git: local secrets (.env.production, *.pem) never leave this machine.
+  git ls-files | grep -v -E '^(test|docs|probe)/' | rsync -az --files-from=- ./ "root@$host:/opt/cronkick/"
   ssh "root@$host" 'set -e
     cd /opt/cronkick && chown -R cronkick:cronkick . && sudo -u cronkick npm ci --omit=dev --silent
     cp deploy/cronkick.service /etc/systemd/system/cronkick.service && systemctl daemon-reload
