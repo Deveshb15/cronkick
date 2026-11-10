@@ -3,8 +3,19 @@
 @theme {
   --font-sans: InterVariable, ui-sans-serif, system-ui, sans-serif;
   --font-sans--font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --color-brand-400: oklch(75% 0.16 55);
-  --color-brand-500: oklch(68% 0.19 48);
-  --color-brand-600: oklch(60% 0.19 45);
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --color-brand-300: #ffd27a;
+  --color-brand-400: #ffc24a;
+  --color-brand-500: #ffb020;
+  --color-brand-600: #e69500;
+  --color-ink: #09090b;
+  /* slot states, used by the tick strips */
+  --color-ontime: var(--color-emerald-400);
+  --color-late: var(--color-orange-300);
+  --color-missed: var(--color-red-500);
+}
+
+/* Soft amber light behind the hero; decorative only. */
+@utility hero-glow {
+  background-image: radial-gradient(60% 50% at 30% 0%, color-mix(in oklab, var(--color-brand-500) 14%, transparent), transparent 70%);
 }

@@ -76,3 +76,18 @@ test('session: round-trips, rejects tampering and expiry', () => {
   expect(decodeSession(raw, 1_000 + 61 * 60_000)).toBeNull();
   expect(decodeSession(undefined)).toBeNull();
 });
+
+test('ticks: on time vs late vs missed vs idle', async () => {
+  const { toTick, recentTicks } = await import('../web/lib/data.ts');
+  expect(toTick('accepted', 2_000)).toBe('ontime');
+  expect(toTick('fired', 45_000)).toBe('late');
+  expect(toTick('expired', null)).toBe('missed');
+  expect(toTick('unknown', 1_000)).toBe('missed');
+  expect(toTick('skipped', null)).toBe('idle');
+  await seed(db);
+  await slot(3, 'accepted', 1);
+  await slot(2, 'fired', 90);
+  await slot(1, 'expired', null);
+  const ticks = (await recentTicks(db, 1, NOW, 5)).get(100);
+  expect(ticks).toEqual(['idle', 'idle', 'ontime', 'late', 'missed']);
+});

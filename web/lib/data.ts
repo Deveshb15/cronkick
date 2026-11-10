@@ -1,6 +1,35 @@
 import type pg from 'pg';
 import { PLANS, type PlanName } from '../../src/plans.ts';
 
+/** One tick per slot in the dashboard strips. */
+export type Tick = 'ontime' | 'late' | 'missed' | 'idle';
+
+/** Fired within 30 s is on time; fired later is late; unknown/expired count as missed; anything not run is idle. */
+export function toTick(state: string, delayMs: number | null): Tick {
+  if (state === 'fired' || state === 'accepted') return delayMs !== null && delayMs > 30_000 ? 'late' : 'ontime';
+  if (state === 'unknown' || state === 'expired') return 'missed';
+  return 'idle';
+}
+
+/** The last `n` due slots of every workflow in an installation, oldest first, left-padded with idle ticks. */
+export async function recentTicks(db: pg.Pool, installationId: number, now: Date, n = 48): Promise<Map<number, Tick[]>> {
+  const { rows } = await db.query(
+    `SELECT workflow_id, state, extract(epoch FROM first_attempt_at - due_at) * 1000 AS delay_ms
+       FROM (SELECT *, row_number() OVER (PARTITION BY workflow_id ORDER BY due_at DESC) AS rn
+               FROM slots WHERE installation_id = $1 AND due_at <= $2) s
+      WHERE rn <= $3 ORDER BY workflow_id, due_at`,
+    [installationId, now, n],
+  );
+  const out = new Map<number, Tick[]>();
+  for (const r of rows) {
+    const list = out.get(r.workflow_id) ?? [];
+    list.push(toTick(r.state, r.delay_ms === null ? null : Number(r.delay_ms)));
+    out.set(r.workflow_id, list);
+  }
+  for (const [k, v] of out) out.set(k, [...Array<Tick>(Math.max(0, n - v.length)).fill('idle'), ...v]);
+  return out;
+}
+
 export type Flag = { line?: number; message: string };
 export type Schedule = { cron: string; tz: string; status: 'active' | 'paused_limit' };
 export type WorkflowStatus = 'active' | 'limited' | 'needs_fix' | 'ready' | 'none';

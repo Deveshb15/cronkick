@@ -14,14 +14,14 @@ export default async function Dashboard() {
   const installs = await installationsFor(db, s.installs);
   if (installs.length) redirect(`/dashboard/${installs[0].id}`);
   return (
-    <main className="grid min-h-dvh place-items-center px-4">
+    <main className="hero-glow grid min-h-dvh place-items-center px-4">
       <div className="w-full max-w-sm">
-        <Logo />
-        <h1 className="mt-8 text-2xl font-semibold tracking-tight">Install Cronkick on GitHub</h1>
-        <p className="mt-3 text-base/7 text-pretty text-zinc-600 sm:text-sm/6 dark:text-zinc-400">
-          You’re signed in as {s.login}, but the app isn’t installed on any account you can access yet. Install it, choose your repositories, and you’ll land back here.
+        <Logo className="h-6" />
+        <h1 className="mt-10 text-2xl font-semibold tracking-tight">Install Cronkick on GitHub</h1>
+        <p className="mt-3 text-base/7 text-pretty text-zinc-400 sm:text-sm/6">
+          You’re signed in as {s.login}, but the app isn’t installed on an account you can access yet. Install it, choose your repositories, and you’ll land back here.
         </p>
-        <div className="mt-8 flex flex-wrap items-center gap-4">
+        <div className="mt-8 flex flex-wrap items-center gap-3">
           <ButtonLink href={installUrl()} variant="primary">Install the GitHub App</ButtonLink>
           <ButtonLink href="/login?next=/dashboard" prefetch={false} variant="ghost">I just installed it</ButtonLink>
         </div>
