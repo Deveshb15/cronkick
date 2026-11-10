@@ -126,7 +126,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const bench = reports.filter((r) => r.stats.expected > 0).sort((a, b) => b.stats.expected - a.stats.expected)[0];
   return (
     <>
-      <section className="relative isolate overflow-hidden border-b border-white/5">
+      <section className="relative isolate z-10 border-b border-white/5">
         <div aria-hidden="true" className="time-grid absolute inset-0 -z-10" />
         <div aria-hidden="true" className="hero-glow absolute inset-0 -z-10" />
         <div className={`${container} pt-12 pb-8`}>

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import { Hono } from 'hono';
 import type { Deps } from '../deps.ts';
 import { handleEvent, verifySignature } from '../webhooks.ts';
@@ -16,6 +17,7 @@ export function webApp(deps: Deps, opts: { webhookSecret: string }) {
       await handleEvent(deps, event, JSON.parse(body));
     } catch (e) {
       console.error(`webhook ${event} failed`, e);
+      Sentry.captureException(e, { tags: { webhook: event } });
       return c.text('error', 500);
     }
     return c.text('ok');

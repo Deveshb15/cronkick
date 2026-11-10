@@ -47,6 +47,8 @@ export function SiteFooter() {
           <Link href="/lateness" className={link}>GitHub lateness</Link>
           <Link href="/privacy" className={link}>Privacy</Link>
           <Link href="/terms" className={link}>Terms</Link>
+          <Link href="/refunds" className={link}>Refunds</Link>
+          <Link href="/support" className={link}>Support</Link>
           <a href="mailto:hi@cronkick.xyz" className={link}>hi@cronkick.xyz</a>
         </nav>
       </div>

@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server';
+import * as Sentry from '@sentry/node';
 import { loadConfig } from './config.ts';
 import { createDb, migrate } from './db.ts';
 import type { Deps } from './deps.ts';
@@ -10,6 +11,9 @@ import { sendSlotAlerts } from './alerts.ts';
 import { reconcileAll } from './sync.ts';
 import { collectProbes } from './probe/collector.ts';
 import { webApp } from './web/app.ts';
+
+// Errors only (no tracing). Without SENTRY_DSN this is off and capture calls do nothing.
+if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, environment: 'production', tracesSampleRate: 0 });
 
 const cfg = loadConfig();
 const db = createDb(cfg.databaseUrl);
@@ -25,7 +29,7 @@ let stopping = false;
 function loop(name: string, ms: number, fn: () => Promise<unknown>): Promise<void> {
   return new Promise((resolve) => {
     const tick = async () => {
-      try { await fn(); } catch (e) { console.error(`${name} failed`, e); }
+      try { await fn(); } catch (e) { console.error(`${name} failed`, e); Sentry.captureException(e, { tags: { loop: name } }); }
       if (stopping) resolve(); else setTimeout(tick, ms);
     };
     void tick();
