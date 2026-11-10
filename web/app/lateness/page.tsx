@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { Metadata } from 'next';
 import { SiteFooter, SiteHeader } from '@/components/site';
 import { ButtonLink, Code, Eyebrow } from '@/components/ui';
@@ -19,11 +20,11 @@ export default async function Lateness() {
       <SiteHeader signedIn={!!session} />
       <main className="hero-glow px-4 pt-16 pb-24 sm:px-6 sm:pt-24 lg:px-8">
         <div className="mx-auto max-w-6xl">
-          <Eyebrow>Live measurement</Eyebrow>
-          <h1 className="mt-3 max-w-[24ch] text-4xl font-semibold tracking-tight text-balance sm:text-5xl">How late are GitHub’s scheduled workflows?</h1>
-          <p className="mt-6 max-w-[56ch] text-lg text-pretty text-zinc-400">
+          <div className="text-center"><Eyebrow>Live measurement</Eyebrow>
+          <h1 className="mx-auto mt-3 max-w-[24ch] text-4xl font-semibold tracking-tight text-balance sm:text-5xl">How late are GitHub’s scheduled workflows?</h1>
+          <p className="mx-auto mt-6 max-w-[56ch] text-lg text-pretty text-zinc-400">
             Measured live from our own repositories that use only GitHub’s native <Code>schedule:</Code> trigger. Lateness is the time from the scheduled minute until GitHub created the run. Last 7 days; a slot with no run after an hour counts as never ran.
-          </p>
+          </p></div>
           {any ? (
             <div className="mt-12 -mx-4 -my-2 overflow-x-auto whitespace-nowrap sm:-mx-6 lg:-mx-8">
               <div className="inline-block min-w-full px-4 py-2 align-middle sm:px-6 lg:px-8">
@@ -50,11 +51,11 @@ export default async function Lateness() {
               </div>
             </div>
           ) : (
-            <p className="mt-12 max-w-[56ch] text-base/7 text-zinc-400"><span className="font-semibold text-white">Collecting data.</span> The first numbers appear an hour after the probes start.</p>
+            <p className="mx-auto mt-12 max-w-[56ch] text-center text-base/7 text-zinc-400"><span className="font-semibold text-white">Collecting data.</span> The first numbers appear an hour after the probes start.</p>
           )}
-          <div className="mt-12 flex flex-wrap items-center gap-x-6 gap-y-4">
+          <div className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
             <ButtonLink href={installUrl()} variant="primary">Install Cronkick</ButtonLink>
-            <a href="/#how-it-works" className="text-base/6 font-medium sm:text-sm/6">How it works <span aria-hidden="true">→</span></a>
+            <Link href="/#how-it-works" className="text-base/6 font-medium sm:text-sm/6">How it works <span aria-hidden="true">→</span></Link>
           </div>
         </div>
       </main>

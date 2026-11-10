@@ -192,7 +192,7 @@ export default async function Home() {
         </section>
 
         {/* Pricing */}
-        <section id="pricing" className="border-t border-white/5 py-24 sm:py-32">
+        <section id="pricing" className="scroll-mt-16 border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="Pricing" title="Simple pricing. No overage charges, ever.">
               <p>At your plan’s limit, extra schedules pause and we email you. Nothing is charged for going over.</p>

@@ -61,5 +61,5 @@ export function SiteFooter() {
 }
 
 export function Prose({ children }: { children: ReactNode }) {
-  return <div className="max-w-[65ch] text-base/7 text-zinc-300 sm:text-sm/6 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:text-white [&_h2]:mt-10 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-white [&_li]:mt-2 [&_p]:mt-4 [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_a]:font-medium [&_a]:text-white [&_a]:underline [&_code]:font-mono [&_code]:text-zinc-200">{children}</div>;
+  return <div className="mx-auto max-w-[65ch] text-base/7 text-zinc-300 sm:text-sm/6 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:text-white [&_h2]:mt-10 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-white [&_li]:mt-2 [&_p]:mt-4 [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_a]:font-medium [&_a]:text-white [&_a]:underline [&_code]:font-mono [&_code]:text-zinc-200">{children}</div>;
 }
