@@ -6,6 +6,7 @@ import { FirstRun } from '@/components/first-run';
 import { Countdown, Counter } from '@/components/live';
 import { LiveStrip } from '@/components/live-strip';
 import { SwitchSection, type Candidate } from '@/components/switch-card';
+import { keepOnGitHub } from './actions';
 import { Code } from '@/components/ui';
 import { requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
@@ -41,7 +42,7 @@ function Stat({ label, value, sub, children }: { label: string; value: ReactNode
     <div className="group relative p-4">
       <dt className="font-mono text-[0.6875rem]/4 tracking-wider text-zinc-500 uppercase">{label}</dt>
       <dd className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</dd>
-      <p className="mt-1 truncate text-xs/5 text-zinc-500">{sub}</p>
+      <p className="mt-1 text-xs/5 text-pretty text-zinc-500">{sub}</p>
       {children}
     </div>
   );
@@ -50,7 +51,7 @@ function Stat({ label, value, sub, children }: { label: string; value: ReactNode
 function ScheduleRow({ w, installationId, slots, floor }: { w: WorkflowRow; installationId: number; slots: SlotView[]; floor: number }) {
   const active = w.status === 'active';
   const dot = w.status === 'needs_fix' || missed(w.c24) ? 'bg-red-500' : w.status === 'limited' ? 'bg-zinc-600' : w.c24.late ? 'bg-orange-300' : 'bg-emerald-400';
-  const crons = w.schedules.map((s) => `${s.cron}${s.tz !== 'UTC' ? ` ${s.tz}` : ''}`).join(' · ');
+  const crons = w.schedules.map((s) => s.cron).join(' · '); // time zones are already in the plain words
   const words = w.schedules.length === 1 ? `${humanCron(w.schedules[0].cron)} · ${w.schedules[0].tz}` : `${w.schedules.length} schedules`;
   const plain = w.schedules.some((x) => humanCron(x.cron) !== x.cron); // raw cron adds nothing when there are no plain words
   return (
@@ -97,14 +98,15 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const branch = new Map(repos.map((r) => [r.full_name, r.default_branch]));
   const mine = all.filter((w) => w.status === 'active' || w.status === 'limited' || w.status === 'needs_fix')
     .sort((a, b) => ({ needs_fix: 0, active: 1, limited: 2 } as Record<string, number>)[a.status] - ({ needs_fix: 0, active: 1, limited: 2 } as Record<string, number>)[b.status]);
-  const candidates: Candidate[] = all.filter((w) => w.status === 'ready' && w.suggested_diff).map((w) => {
+  const hidden = all.filter((w) => w.status === 'ready' && w.suggested_diff && w.dismissed).map((w) => ({ id: w.id, name: w.name, repo: w.repo }));
+  const candidates: Candidate[] = all.filter((w) => w.status === 'ready' && w.suggested_diff && !w.dismissed).map((w) => {
     const p = switchPlan(w.suggested_diff!, limits.floorMinutes);
     return {
       id: w.id, name: w.name, path: w.path, repo: w.repo, editUrl: `https://github.com/${w.repo}/edit/${branch.get(w.repo)}/${w.path}`,
       cadence: p.crons.map((c) => humanCron(c.cron)).join(' · '), before: p.before, after: p.after, clamped: p.clamped, tooFast: p.tooFast,
     };
   });
-  const switchSection = <SwitchSection candidates={candidates} plan={inst.plan} floor={limits.floorMinutes} />;
+  const switchSection = <SwitchSection candidates={candidates} hidden={hidden} plan={inst.plan} floor={limits.floorMinutes} hide={keepOnGitHub.bind(null, id)} />;
 
   // Until the first kick, the page is the setup guide; it flips live when Cronkick sees the push.
   // A paused or broken workflow keeps the normal overview, so its reason is always on screen.
@@ -114,7 +116,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
       <>
         <FirstRun installationId={id} repos={repos.map((r) => r.full_name)} manageUrl={manageReposUrl(inst)} floor={limits.floorMinutes} candidates={candidates.length}
           found={nk ? { workflowId: nk.workflowId, workflow: nk.workflow, repo: nk.repo, due: nk.due } : null} />
-        {candidates.length > 0 && <div className={`${container} pb-16`}>{switchSection}</div>}
+        {(candidates.length > 0 || hidden.length > 0) && <div className={`${container} pb-16`}>{switchSection}</div>}
         <DispatchToasts items={items} />
       </>
     );
@@ -158,7 +160,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
               </div>
             )}
           </div>
-          <dl className="mt-8 grid grid-cols-2 divide-white/10 rounded-2xl bg-zinc-950/60 inset-ring inset-ring-white/10 max-lg:divide-y lg:grid-cols-4 lg:divide-x">
+          <dl className="mt-8 grid grid-cols-2 rounded-2xl bg-zinc-950/60 inset-ring inset-ring-white/10 *:border-white/10 lg:grid-cols-4 [&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t lg:[&>*:nth-child(3)]:border-l lg:[&>*:nth-child(n+3)]:border-t-0">
             <Stat label="On time · 24 h" value={<><Counter value={c.onTime} /><span className="text-zinc-500"> of {c.due}</span></>} sub="started within 30 s">
               <div role="tooltip" className="pointer-events-none absolute top-full left-4 z-20 mt-2 hidden w-64 rounded-xl bg-zinc-800 p-3 text-xs/5 shadow-2xl ring-1 ring-white/10 group-hover:block">
                 <p className="mb-1.5 font-medium">Last 24 h, by outcome</p>
@@ -186,7 +188,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
               <li className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-missed" />missed</li>
               <li className="flex items-center gap-1.5"><span className="tick-skip size-2 rounded-sm" />skipped</li>
               <li className="flex items-center gap-1.5"><span className="size-2 rounded-sm shadow-[inset_0_0_0_1.5px_var(--color-brand-500)]" />next</li>
-              <li className="flex items-center gap-1.5"><span className="tick-track inline-block h-px w-4 self-center" />before tracking</li>
+              <li className="flex items-center gap-1.5"><span className="inline-block w-4 border-t border-dashed border-white/30" />before tracking</li>
             </ul>
           </div>
           <ul role="list" className="mt-4 divide-y divide-white/5 overflow-hidden rounded-2xl inset-ring inset-ring-white/10">

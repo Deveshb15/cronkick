@@ -16,6 +16,14 @@ export function dbUrl(): string {
   return need('DATABASE_URL');
 }
 
+/**
+ * A direct (unpooled) connection, for the two things a transaction-mode pooler can't do: the migration advisory
+ * lock and LISTEN. Falls back to DATABASE_URL when there is no pooler.
+ */
+export function directDbUrl(): string {
+  return process.env.DATABASE_DIRECT_URL || dbUrl();
+}
+
 /** Full app config. Only called by main.ts, so tests don't need GitHub secrets. */
 export function loadConfig() {
   return {

@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import * as Sentry from '@sentry/node';
-import { loadConfig } from './config.ts';
 import { createDb, migrate } from './db.ts';
+import { directDbUrl, loadConfig } from './config.ts';
 import type { Deps } from './deps.ts';
 import { githubApp, realGitHub } from './github.ts';
 import { resendMailer } from './mailer.ts';
@@ -17,7 +17,11 @@ if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, environme
 
 const cfg = loadConfig();
 const db = createDb(cfg.databaseUrl);
-await migrate(db);
+{
+  const direct = createDb(directDbUrl());
+  await migrate(direct);
+  await direct.end();
+}
 
 const gh = githubApp(cfg);
 const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl };

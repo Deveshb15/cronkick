@@ -15,11 +15,14 @@ const config: NextConfig = {
   deploymentId,
   // Cloudflare compresses at the edge; compressing here too can buffer the live-update stream.
   compress: false,
+  // Loaded at runtime, not bundled: bundling it breaks Sentry's own module hooks.
+  serverExternalPackages: ['@sentry/node'],
   // The worker (src/main.ts) owns webhooks and the health check; the web app fronts everything on one port.
   async rewrites() {
     return [
       { source: '/webhooks', destination: `${worker}/webhooks` },
       { source: '/healthz', destination: `${worker}/healthz` },
+      { source: '/healthz/dispatch', destination: `${worker}/healthz/dispatch` },
     ];
   },
 };

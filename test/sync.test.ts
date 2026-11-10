@@ -113,9 +113,10 @@ test('end to end: install, fire, link run by time, conclusion recorded', async (
   expect(s.gh.dispatches[0]).toEqual({ repo: 'acme/app', workflowId: 100, ref: 'main' });
   const run = { id: 9, workflow_id: 100, event: 'workflow_dispatch', html_url: 'https://github.com/acme/app/actions/runs/9', status: 'queued', conclusion: null, created_at: '2026-11-10T00:15:03Z' };
   await handleEvent(s.deps, 'workflow_run', { action: 'requested', installation: install, workflow_run: run });
-  await handleEvent(s.deps, 'workflow_run', { action: 'completed', installation: install, workflow_run: { ...run, status: 'completed', conclusion: 'success' } });
-  const { rows } = await db.query(`SELECT state, run_id, matched_by, conclusion FROM slots WHERE run_id IS NOT NULL`);
-  expect(rows).toEqual([{ state: 'accepted', run_id: 9, matched_by: 'time', conclusion: 'success' }]);
+  await handleEvent(s.deps, 'workflow_run', { action: 'in_progress', installation: install, workflow_run: { ...run, status: 'in_progress', run_started_at: '2026-11-10T00:15:09Z' } });
+  await handleEvent(s.deps, 'workflow_run', { action: 'completed', installation: install, workflow_run: { ...run, status: 'completed', conclusion: 'success', run_started_at: '2026-11-10T00:15:09Z', updated_at: '2026-11-10T00:16:40Z' } });
+  const { rows } = await db.query(`SELECT state, run_id, matched_by, conclusion, run_started_at, run_completed_at FROM slots WHERE run_id IS NOT NULL`);
+  expect(rows).toEqual([{ state: 'accepted', run_id: 9, matched_by: 'time', conclusion: 'success', run_started_at: new Date('2026-11-10T00:15:09Z'), run_completed_at: new Date('2026-11-10T00:16:40Z') }]);
 });
 
 test('workflow_run from a push, or with nothing to match, is ignored', async () => {

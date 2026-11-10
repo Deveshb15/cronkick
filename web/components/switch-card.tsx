@@ -1,7 +1,8 @@
 'use client';
 import { ChevronRightIcon } from '@heroicons/react/16/solid';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 
+export type Hide = (workflowId: number, hidden: boolean) => Promise<void>;
 export type Candidate = {
   id: number; name: string; path: string; repo: string; editUrl: string; cadence: string;
   before: string; after: string; clamped: string | null; tooFast: boolean;
@@ -19,8 +20,9 @@ function Diff({ before, after }: { before: string; after: string }) {
   );
 }
 
-function CandidateRow({ c, open, plan, floor }: { c: Candidate; open: boolean; plan: string; floor: number }) {
+function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: boolean; plan: string; floor: number; hide: Hide }) {
   const [useClamped, setUseClamped] = useState(true);
+  const [hiding, startHide] = useTransition();
   const [copied, setCopied] = useState(false);
   const after = c.tooFast && c.clamped && useClamped ? c.clamped : c.after;
   const copy = () => navigator.clipboard.writeText(body(after).join('\n')).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
@@ -52,6 +54,9 @@ function CandidateRow({ c, open, plan, floor }: { c: Candidate; open: boolean; p
         <div className="flex flex-col gap-2">
           <button type="button" onClick={copy} className="rounded-lg bg-brand-500 px-3 py-2 text-sm/6 font-semibold text-ink transition hover:bg-brand-400">{copied ? 'Copied ✓' : 'Copy these lines'}</button>
           <a href={c.editUrl} className="rounded-lg bg-white/5 px-3 py-2 text-center text-sm/6 inset-ring inset-ring-white/10 transition hover:bg-white/10">Edit file on GitHub ↗</a>
+          <button type="button" disabled={hiding} onClick={() => startHide(() => hide(c.id, true))} className="text-left text-xs/5 text-zinc-500 hover:text-zinc-300 disabled:opacity-50 lg:order-last lg:mt-auto">
+            {hiding ? 'Hiding…' : 'Keep it on GitHub · hide from this list'}
+          </button>
           {c.tooFast && (
             <p className="mt-1 text-xs/5 text-pretty text-zinc-400">
               {c.clamped
@@ -66,9 +71,26 @@ function CandidateRow({ c, open, plan, floor }: { c: Candidate; open: boolean; p
 }
 
 /** Workflows still on GitHub's `schedule:`, folded into one section so they never crowd out the real schedules. */
-export function SwitchSection({ candidates, plan, floor }: { candidates: Candidate[]; plan: string; floor: number }) {
-  if (!candidates.length) return null;
+export function SwitchSection({ candidates, hidden, plan, floor, hide }: {
+  candidates: Candidate[]; hidden: { id: number; name: string; repo: string }[]; plan: string; floor: number; hide: Hide;
+}) {
+  const [showing, startShow] = useTransition();
+  if (!candidates.length && !hidden.length) return null;
   const n = candidates.length;
+  const hiddenList = hidden.length > 0 && (
+    <details className="group/h text-xs/5 text-zinc-500">
+      <summary className="cursor-pointer list-none hover:text-zinc-300 [&::-webkit-details-marker]:hidden">{hidden.length} kept on GitHub · show</summary>
+      <ul role="list" className="mt-2 space-y-1">
+        {hidden.map((h) => (
+          <li key={h.id} className="flex items-center gap-x-3">
+            <span className="text-zinc-400">{h.name} <span className="font-mono text-zinc-600">· {h.repo.split('/')[1]}</span></span>
+            <button type="button" disabled={showing} onClick={() => startShow(() => hide(h.id, false))} className="text-brand-400 hover:text-brand-300 disabled:opacity-50">Show again</button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+  if (!n) return <div className="px-1">{hiddenList}</div>;
   return (
     <details className="group rounded-2xl bg-brand-500/[0.05] inset-ring inset-ring-brand-500/20">
       <summary className="flex cursor-pointer list-none items-center gap-x-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
@@ -80,7 +102,8 @@ export function SwitchSection({ candidates, plan, floor }: { candidates: Candida
         <span className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-xs/5 font-semibold text-ink group-open:hidden">Review</span>
       </summary>
       <div className="space-y-2 px-5 pb-5">
-        {candidates.map((c, i) => <CandidateRow key={c.id} c={c} open={i === 0} plan={plan} floor={floor} />)}
+        {candidates.map((c, i) => <CandidateRow key={c.id} c={c} open={i === 0} plan={plan} floor={floor} hide={hide} />)}
+        {hiddenList && <div className="pt-2">{hiddenList}</div>}
       </div>
     </details>
   );

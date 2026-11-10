@@ -76,7 +76,7 @@ export const healthOf = (c: Counts24): Health => (c.unconfirmed + c.gaveUp ? 'mi
 
 export type WorkflowRow = {
   id: number; repo: string; name: string; path: string; flags: Flag[]; suggested_diff: string | null; schedules: Schedule[];
-  status: WorkflowStatus; c24: Counts24; nextDue: string | null;
+  status: WorkflowStatus; c24: Counts24; nextDue: string | null; dismissed: boolean;
 };
 export type RepoRow = { id: number; full_name: string; default_branch: string; workflows: WorkflowRow[] };
 export type Verdict = 'nothing_scheduled' | 'needs_fix' | 'missed' | 'late' | 'on_time' | 'no_runs';
@@ -89,7 +89,7 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
   )).rows;
 
   const workflows = (await db.query(
-    `SELECT w.id, w.repo_id, w.name, w.path, w.flags, w.suggested_diff,
+    `SELECT w.id, w.repo_id, w.name, w.path, w.flags, w.suggested_diff, w.dismissed_at IS NOT NULL AS dismissed,
             coalesce(json_agg(json_build_object('cron', s.cron, 'tz', s.tz, 'status', s.status) ORDER BY s.id)
                      FILTER (WHERE s.id IS NOT NULL), '[]') AS schedules
        FROM workflows w JOIN repos r ON r.id = w.repo_id LEFT JOIN schedules s ON s.workflow_id = w.id
@@ -124,7 +124,7 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
     const n = nextBy.get(Number(w.id));
     repo.workflows.push({
       id: Number(w.id), repo: repo.full_name, name: w.name, path: w.path, flags: w.flags, suggested_diff: w.suggested_diff, schedules: w.schedules,
-      status: workflowStatus(w), c24: stats.get(Number(w.id)) ?? counts(null), nextDue: n ? n.toISOString() : null,
+      status: workflowStatus(w), c24: stats.get(Number(w.id)) ?? counts(null), nextDue: n ? n.toISOString() : null, dismissed: w.dismissed,
     });
   }
 
@@ -221,7 +221,10 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
   const c24 = counts(day.rows[0]);
   return {
     workflow: w,
-    slots: slots.rows.map((r) => ({ ...slotView(r), responseStatus: r.response_status as number | null, responseNote: r.response_note as string | null, matchedBy: r.matched_by as string | null, attempts: r.attempts as number })),
+    slots: slots.rows.map((r) => ({
+      ...slotView(r), responseStatus: r.response_status as number | null, responseNote: r.response_note as string | null, matchedBy: r.matched_by as string | null, attempts: r.attempts as number,
+      runStartedAt: r.run_started_at ? new Date(r.run_started_at).toISOString() : null, runCompletedAt: r.run_completed_at ? new Date(r.run_completed_at).toISOString() : null,
+    })),
     counts: Object.fromEntries(all.rows.map((r) => [r.state, r.n])) as Record<string, number>,
     c24,
     health: healthOf(c24),
@@ -229,6 +232,16 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
     limits,
     plan,
   };
+}
+
+/** Hide (or show again) a workflow in the "still on GitHub's schedule" list. Only within this installation. */
+export async function setDismissed(db: pg.Pool, installationId: number, workflowId: number, dismissed: boolean): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `UPDATE workflows SET dismissed_at = CASE WHEN $3 THEN now() END
+      WHERE id = $1 AND repo_id IN (SELECT id FROM repos WHERE installation_id = $2)`,
+    [workflowId, installationId, dismissed],
+  );
+  return rowCount === 1;
 }
 
 export async function setAlertEmail(db: pg.Pool, installationId: number, email: string) {

@@ -28,3 +28,18 @@ test('signed webhook is handled', async () => {
 test('healthz checks the database', async () => {
   expect(await (await app().request('/healthz')).text()).toBe('ok');
 });
+
+test('healthz/dispatch fails when due slots wait more than 2 minutes, so the uptime check catches a stuck dispatcher', async () => {
+  const { seed } = await import('./helpers.ts');
+  await seed(db);
+  const at = (min: number) => new Date(Date.UTC(2026, 10, 10, 12, 0) - min * 60_000);
+  const slot = (min: number) => db.query(
+    `INSERT INTO slots (installation_id, repo_id, workflow_id, due_at, fire_at, deadline_at, next_attempt_at) VALUES (1, 10, 100, $1, $1, $1, $1)`, [at(min)]);
+  await slot(1); // due a minute ago: normal, not yet lagging
+  expect((await app().request('/healthz/dispatch')).status).toBe(200);
+  await slot(3);
+  expect((await app().request('/healthz')).status).toBe(200); // the load balancer's check stays up
+  const res = await app().request('/healthz/dispatch');
+  expect(res.status).toBe(503);
+  expect(await res.text()).toMatch(/1 slot/);
+});

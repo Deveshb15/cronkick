@@ -34,6 +34,12 @@ export function fmtDelay(ms: number | null): string {
   return `+${s < 1 ? s.toFixed(2) : s.toFixed(1)} s`;
 }
 
+/** A duration as "42 s" or "1 min 32 s". */
+export function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+}
+
 /** Countdown text for `ms` until a due time: mm:ss under an hour, "3 h 12 min" above. Never negative. */
 export function countdown(ms: number): { due: boolean; text: string } {
   if (ms <= 0) return { due: true, text: '00:00' };

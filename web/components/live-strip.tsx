@@ -31,7 +31,8 @@ export function LiveStrip({ slots, positions = 48, next = false, height = 'h-7',
   };
   const summary = `${shown.filter((s) => s.tick === 'ontime').length} of ${shown.length} recent slots on time`;
   return (
-    <div role="img" aria-label={summary} className={`flex items-stretch gap-[3px] ${height}`}>
+    // 96 ticks don't fit a phone with 3 px gaps; tighten them on small screens.
+    <div role="img" aria-label={summary} className={`flex items-stretch ${positions > 60 ? 'gap-px sm:gap-[3px]' : 'gap-[3px]'} ${height}`}>
       {empty > 0 && <span aria-hidden="true" className="tick-track" style={{ flex: empty }} title="Before Cronkick started tracking this schedule" />}
       {shown.map((s) => (
         <span

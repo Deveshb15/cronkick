@@ -2,11 +2,14 @@
 import { ChevronRightIcon } from '@heroicons/react/16/solid';
 import { Fragment, useState } from 'react';
 import type { SlotView } from '@/lib/data';
-import { fmtDelay } from '@/lib/live';
+import { fmtDelay, fmtDuration } from '@/lib/live';
 import { JobResult, SLOT_HELP, SlotPill } from './ui';
 import { Time, useArrivals } from './live';
 
-export type HistoryRow = SlotView & { responseStatus: number | null; responseNote: string | null; matchedBy: string | null; attempts: number };
+export type HistoryRow = SlotView & {
+  responseStatus: number | null; responseNote: string | null; matchedBy: string | null; attempts: number;
+  runStartedAt: string | null; runCompletedAt: string | null;
+};
 
 /** Every step of one slot, from its scheduled time to the job's result. */
 function Steps({ s }: { s: HistoryRow }) {
@@ -16,7 +19,9 @@ function Steps({ s }: { s: HistoryRow }) {
     s.delayMs === null ? 'Not sent' : <>Sent to GitHub {fmtDelay(s.delayMs)}{s.attempts > 1 ? ` after ${s.attempts} tries` : ''}</>,
     s.responseStatus ? `GitHub answered ${s.responseStatus}${s.responseNote ? ` (${s.responseNote})` : ''}` : sent ? 'GitHub accepted it' : SLOT_HELP[s.state],
     s.runUrl ? <a href={s.runUrl} className="text-white hover:underline">Run linked {s.matchedBy === 'time' ? 'by time ⚠' : 'by id'} ↗</a> : sent ? 'Run not linked yet' : null,
-    s.runUrl ? <>Job: <JobResult conclusion={s.conclusion} /></> : null,
+    // Time GitHub took to give the job a runner after we sent it: GitHub's queue, not Cronkick.
+    s.runStartedAt && s.delayMs !== null ? `Runner started ${fmtDuration(new Date(s.runStartedAt).getTime() - new Date(s.due).getTime() - s.delayMs)} later` : null,
+    s.runUrl ? <>Job: <JobResult conclusion={s.conclusion} />{s.runStartedAt && s.runCompletedAt ? ` in ${fmtDuration(new Date(s.runCompletedAt).getTime() - new Date(s.runStartedAt).getTime())}` : ''}</> : null,
   ].filter(Boolean);
   return (
     <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[0.6875rem]/5 text-zinc-400">

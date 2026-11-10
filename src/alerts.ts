@@ -25,7 +25,7 @@ export async function sendLimitNotice(deps: Deps, installationId: number, paused
     await deps.mailer.send({
       to,
       subject: `Cronkick: ${paused} schedule${paused === 1 ? '' : 's'} paused by your plan limit`,
-      text: `Your ${rows[0].plan} plan's limit was reached, so ${paused} schedule(s) are paused and won't be triggered. Nothing was charged.\n\nSee which ones: ${deps.baseUrl}/i/${installationId}`,
+      text: `Your ${rows[0].plan} plan's limit was reached, so ${paused} schedule(s) are paused and won't be triggered. Nothing was charged.\n\nSee which ones: ${deps.baseUrl}/dashboard/${installationId}`,
     });
   } catch (e) {
     await deps.db.query('UPDATE installations SET limit_email_sent_at = NULL WHERE id = $1', [installationId]);
@@ -70,7 +70,7 @@ export async function sendSlotAlerts(deps: Deps): Promise<number> {
       await deps.mailer.send({
         to,
         subject: `Cronkick: ${r.full_name} · ${r.name} — ${r.kind.replace('_', ' ')} (${r.due_at.toISOString()})`,
-        text: `${what}\n\nSlot due ${r.due_at.toISOString()}.\nHistory: ${deps.baseUrl}/i/${r.installation_id}/w/${r.workflow_id}`,
+        text: `${what}\n\nSlot due ${r.due_at.toISOString()}.\nHistory: ${deps.baseUrl}/dashboard/${r.installation_id}/workflows/${r.workflow_id}`,
       });
       sent++;
     } catch (e) {

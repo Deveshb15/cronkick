@@ -1,7 +1,10 @@
 import type { Db } from './db.ts';
 
 
-type Run = { id: number; workflow_id: number; event: string; html_url: string; status: string; conclusion: string | null; created_at: string };
+type Run = {
+  id: number; workflow_id: number; event: string; html_url: string; status: string; conclusion: string | null; created_at: string;
+  run_started_at?: string | null; updated_at?: string | null;
+};
 
 /**
  * Link a `workflow_run` webhook to the slot that caused it (R12).
@@ -12,20 +15,26 @@ type Run = { id: number; workflow_id: number; event: string; html_url: string; s
 export async function linkRun(db: Db, run: Run): Promise<number | null> {
   if (run.event !== 'workflow_dispatch') return null;
   const conclusion = run.status === 'completed' ? run.conclusion : null;
+  // GitHub sets run_started_at when a runner picks the job up; on a completed run, updated_at is when it finished.
+  const started = run.run_started_at ?? null;
+  const finished = run.status === 'completed' ? run.updated_at ?? null : null;
   const byId = await db.query(
-    `UPDATE slots SET conclusion = coalesce($2, conclusion), run_url = coalesce(run_url, $3), updated_at = now() WHERE run_id = $1 RETURNING id`,
-    [run.id, conclusion, run.html_url],
+    `UPDATE slots SET conclusion = coalesce($2, conclusion), run_url = coalesce(run_url, $3),
+            run_started_at = coalesce(run_started_at, $4), run_completed_at = coalesce($5, run_completed_at), updated_at = now()
+      WHERE run_id = $1 RETURNING id`,
+    [run.id, conclusion, run.html_url, started, finished],
   );
   if (byId.rowCount) return byId.rows[0].id;
 
   const created = new Date(run.created_at);
   const byTime = await db.query(
-    `UPDATE slots SET state = 'accepted', run_id = $1, run_url = $2, matched_by = 'time', conclusion = $3, updated_at = now()
+    `UPDATE slots SET state = 'accepted', run_id = $1, run_url = $2, matched_by = 'time', conclusion = $3,
+            run_started_at = $6, run_completed_at = $7, updated_at = now()
       WHERE id = (SELECT id FROM slots WHERE workflow_id = $4 AND state = 'fired' AND run_id IS NULL
                     AND fired_at BETWEEN $5::timestamptz - interval '10 minutes' AND $5::timestamptz + interval '1 minute'
                   ORDER BY fired_at LIMIT 1 FOR UPDATE SKIP LOCKED)
       RETURNING id`,
-    [run.id, run.html_url, conclusion, run.workflow_id, created],
+    [run.id, run.html_url, conclusion, run.workflow_id, created, started, finished],
   );
   return byTime.rows[0]?.id ?? null;
 }

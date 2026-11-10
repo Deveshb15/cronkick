@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { countdown, fmtDelay, humanCron, newIds } from '../web/lib/live.ts';
+import { countdown, fmtDelay, fmtDuration, humanCron, newIds } from '../web/lib/live.ts';
 
 test('plain-words cron for common shapes, raw cron otherwise', () => {
   expect(humanCron('*/15 * * * *')).toBe('Every 15 minutes');
@@ -12,6 +12,12 @@ test('plain-words cron for common shapes, raw cron otherwise', () => {
   expect(humanCron('0 */6 * * *')).toBe('Every 6 hours');
   expect(humanCron('0 8 * * 1')).toBe('Mondays at 08:00');
   expect(humanCron('30 18 * * 0')).toBe('Sundays at 18:30');
+});
+
+test('durations', () => {
+  expect(fmtDuration(9_400)).toBe('9 s');
+  expect(fmtDuration(92_000)).toBe('1 min 32 s');
+  expect(fmtDuration(-5)).toBe('0 s');
 });
 
 test('start delay formatting', () => {

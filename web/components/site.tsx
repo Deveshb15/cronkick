@@ -20,6 +20,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
         <nav className="flex items-center gap-x-8 max-md:hidden">
           <Link href="/#how-it-works" className={link}>How it works</Link>
           <Link href="/#pricing" className={link}>Pricing</Link>
+          <Link href="/docs" className={link}>Docs</Link>
           <Link href="/lateness" className={link}>GitHub lateness</Link>
         </nav>
         <div className="flex flex-1 items-center justify-end gap-x-2">
@@ -47,6 +48,7 @@ export function SiteFooter() {
           <Link href="/lateness" className={link}>GitHub lateness</Link>
           <Link href="/privacy" className={link}>Privacy</Link>
           <Link href="/terms" className={link}>Terms</Link>
+          <Link href="/docs" className={link}>Docs</Link>
           <Link href="/refunds" className={link}>Refunds</Link>
           <Link href="/support" className={link}>Support</Link>
           <a href="mailto:hi@cronkick.xyz" className={link}>hi@cronkick.xyz</a>

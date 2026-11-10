@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
-import { accountHealth, activity, overview, recentSlots, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
+import { accountHealth, activity, overview, recentSlots, setDismissed, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
 import { decodeSession, encodeSession } from '../web/lib/session.ts';
 import { freshDb, seed } from './helpers.ts';
 
@@ -166,4 +166,15 @@ test('workflow history: filters and 24 h health', async () => {
   const h = (await workflowHistory(db, 1, 100, NOW, 'late'))!;
   expect(h.health).toBe('missed');
   expect(h.counts).toEqual({ accepted: 2, fired: 1, expired: 1 }); // counts ignore the filter
+});
+
+test('keep it on GitHub: hides only within the installation, and can be undone', async () => {
+  await seed(db);
+  await seed(db, { installationId: 2, repoId: 20, workflowId: 200 });
+  expect(await setDismissed(db, 2, 100, true)).toBe(false); // someone else's workflow
+  expect((await overview(db, 1, NOW)).repos[0].workflows[0].dismissed).toBe(false);
+  expect(await setDismissed(db, 1, 100, true)).toBe(true);
+  expect((await overview(db, 1, NOW)).repos[0].workflows[0].dismissed).toBe(true);
+  await setDismissed(db, 1, 100, false);
+  expect((await overview(db, 1, NOW)).repos[0].workflows[0].dismissed).toBe(false);
 });

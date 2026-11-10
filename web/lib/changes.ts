@@ -11,7 +11,8 @@ const everyone = () => state.subs.forEach((set) => set.forEach((fn) => fn()));
 
 function listen(): Promise<pg.Client> {
   if (state.client) return state.client;
-  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  // LISTEN needs a real session, so bypass the pooler when there is one.
+  const c = new pg.Client({ connectionString: process.env.DATABASE_DIRECT_URL || process.env.DATABASE_URL });
   const p: Promise<pg.Client> = c.connect().then(() => c.query('LISTEN cronkick_changes')).then(() => c);
   const lost = () => {
     if (state.client !== p) return;
