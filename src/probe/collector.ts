@@ -9,11 +9,17 @@ const WINDOW_MS = 7 * 24 * 60 * 60_000;
  */
 export async function collectProbes(db: Db, repos: string[], token: string, fetchFn: typeof fetch = fetch): Promise<void> {
   for (const repo of repos) {
-    const res = await fetchFn(`https://api.github.com/repos/${repo}/actions/runs?event=schedule&per_page=100`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
-    });
-    if (!res.ok) { console.error(`probe ${repo}: ${res.status}`); continue; }
-    const runs: any[] = (await res.json()).workflow_runs ?? [];
+    // Up to 10 pages (1,000 runs, about 3 days at */5), so a late start or an outage loses nothing.
+    const runs: any[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const res = await fetchFn(`https://api.github.com/repos/${repo}/actions/runs?event=schedule&per_page=100&page=${page}`, {
+        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
+      });
+      if (!res.ok) { console.error(`probe ${repo}: ${res.status}`); break; }
+      const batch: any[] = (await res.json()).workflow_runs ?? [];
+      runs.push(...batch);
+      if (batch.length < 100) break;
+    }
     for (const wf of PROBE_WORKFLOWS) {
       const taken = (await db.query('SELECT run_id, due_at FROM probe_runs WHERE repo = $1 AND workflow = $2', [repo, wf.file])).rows;
       const known = new Set(taken.map((r) => r.run_id));
