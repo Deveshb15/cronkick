@@ -112,7 +112,9 @@ export const MAX_ROWS = 500;
 /** Slot history for one workflow, limited by plan; null if it isn't in this installation. */
 export async function workflowHistory(db: pg.Pool, installationId: number, workflowId: number, now: Date) {
   const w = (await db.query(
-    `SELECT w.id, w.name, w.path, r.full_name FROM workflows w JOIN repos r ON r.id = w.repo_id WHERE w.id = $1 AND r.installation_id = $2`,
+    `SELECT w.id, w.name, w.path, r.full_name, r.default_branch,
+            coalesce((SELECT json_agg(json_build_object('cron', s.cron, 'tz', s.tz, 'status', s.status) ORDER BY s.id) FROM schedules s WHERE s.workflow_id = w.id), '[]') AS schedules
+       FROM workflows w JOIN repos r ON r.id = w.repo_id WHERE w.id = $1 AND r.installation_id = $2`,
     [workflowId, installationId],
   )).rows[0];
   if (!w) return null;
@@ -126,9 +128,25 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
     (await db.query(`SELECT state, count(*)::int AS n FROM slots WHERE ${window} GROUP BY state`, [workflowId, now])).rows.map((r) => [r.state, r.n]),
   );
   const next = (await db.query(`SELECT due_at FROM slots WHERE workflow_id = $1 AND due_at > $2 AND state = 'pending' ORDER BY due_at LIMIT 1`, [workflowId, now])).rows[0]?.due_at ?? null;
-  return { workflow: w, slots, counts, next, limits, plan };
+  const last = slots.find((s) => s.state !== 'pending' && s.state !== 'skipped') ?? null;
+  return { workflow: w, slots, counts, next, last, limits, plan };
 }
 
 export async function setAlertEmail(db: pg.Pool, installationId: number, email: string) {
   await db.query('UPDATE installations SET alert_email = $2 WHERE id = $1', [installationId, email]);
+}
+
+/** Due slots per UTC day for one workflow, split into on time, late and missed (same rules as toTick). */
+export async function dailyRuns(db: pg.Pool, workflowId: number, now: Date, days = 14) {
+  const { rows } = await db.query(
+    `SELECT to_char(d, 'Mon DD') AS label,
+            count(s.id) FILTER (WHERE s.state IN ('fired', 'accepted') AND s.first_attempt_at - s.due_at <= interval '30 seconds')::int AS ontime,
+            count(s.id) FILTER (WHERE s.state IN ('fired', 'accepted') AND s.first_attempt_at - s.due_at > interval '30 seconds')::int AS late,
+            count(s.id) FILTER (WHERE s.state IN ('unknown', 'expired'))::int AS missed
+       FROM generate_series(date_trunc('day', $2::timestamptz) - make_interval(days => $3 - 1), date_trunc('day', $2::timestamptz), interval '1 day') d
+       LEFT JOIN slots s ON s.workflow_id = $1 AND s.due_at >= d AND s.due_at < d + interval '1 day' AND s.due_at <= $2
+      GROUP BY d ORDER BY d`,
+    [workflowId, now, days],
+  );
+  return rows as { label: string; ontime: number; late: number; missed: number }[];
 }

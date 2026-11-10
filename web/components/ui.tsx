@@ -1,3 +1,4 @@
+import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon, MinusCircleIcon, XCircleIcon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import type { ComponentProps, ReactNode } from 'react';
 
@@ -50,4 +51,18 @@ export function Code({ children }: { children: ReactNode }) {
 /** Monospace uppercase label above section headings. */
 export function Eyebrow({ children }: { children: ReactNode }) {
   return <p className="font-mono text-sm/6 font-medium tracking-wide text-brand-400 uppercase sm:text-xs/6">{children}</p>;
+}
+
+const SLOT_ICON = { accepted: CheckCircleIcon, fired: CheckCircleIcon, unknown: ExclamationTriangleIcon, expired: XCircleIcon, skipped: MinusCircleIcon, pending: ClockIcon, dispatching: ClockIcon } as const;
+const SLOT_LABEL: Record<string, string> = { accepted: 'Ran', fired: 'Triggered', unknown: 'Unknown', expired: 'Expired', skipped: 'Skipped', pending: 'Pending', dispatching: 'Triggering' };
+
+/** Slot status pill with an icon, so state reads without relying on colour alone. */
+export function SlotPill({ state }: { state: string }) {
+  const Icon = SLOT_ICON[state as keyof typeof SLOT_ICON] ?? ClockIcon;
+  const tone = tones[SLOT_TONE[state] ?? 'zinc'];
+  return (
+    <span className={`inline-flex items-center gap-x-1 rounded-md py-0.5 pr-1.5 pl-0.5 text-sm/5 font-medium whitespace-nowrap inset-ring sm:text-xs/5 ${tone}`}>
+      <Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />{SLOT_LABEL[state] ?? state}
+    </span>
+  );
 }

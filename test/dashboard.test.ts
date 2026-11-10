@@ -91,3 +91,13 @@ test('ticks: on time vs late vs missed vs idle', async () => {
   const ticks = (await recentTicks(db, 1, NOW, 5)).get(100);
   expect(ticks).toEqual(['idle', 'idle', 'ontime', 'late', 'missed']);
 });
+
+test('daily runs: one bucket per day, including empty days', async () => {
+  const { dailyRuns } = await import('../web/lib/data.ts');
+  await seed(db);
+  await slot(60, 'accepted', 1);
+  await slot(120, 'fired', 50);
+  await slot(60 * 30, 'expired', null);
+  const days = await dailyRuns(db, 100, NOW, 3);
+  expect(days.map((d) => [d.ontime, d.late, d.missed])).toEqual([[0, 0, 0], [0, 0, 1], [1, 1, 0]]);
+});

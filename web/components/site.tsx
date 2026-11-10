@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { GitHubMark } from './icons';
 import { Lockup } from './logo';
 import { ButtonLink } from './ui';
 import { installUrl } from '@/lib/format';
@@ -27,7 +28,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           ) : (
             <>
               <ButtonLink href="/login" prefetch={false} size="sm" variant="ghost">Sign in</ButtonLink>
-              <ButtonLink href={installUrl()} size="sm">Install</ButtonLink>
+              <ButtonLink href={installUrl()} size="sm" className="pl-2"><GitHubMark className="size-4" />Install</ButtonLink>
             </>
           )}
         </div>
@@ -39,9 +40,9 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
 export function SiteFooter() {
   const link = 'hover:text-white';
   return (
-    <footer className="border-t border-white/5">
+    <footer className="overflow-hidden border-t border-white/5">
       <div className={`${container} flex flex-col gap-6 py-10 sm:flex-row sm:items-center sm:justify-between`}>
-        <Logo className="h-5" />
+        <p className="text-sm/6 text-zinc-500">© 2026 Cronkick. Built for GitHub Actions.</p>
         <nav className="flex flex-wrap gap-x-6 gap-y-2 text-base/6 font-normal text-zinc-400 sm:text-sm/6">
           <Link href="/lateness" className={link}>GitHub lateness</Link>
           <Link href="/privacy" className={link}>Privacy</Link>
@@ -49,6 +50,8 @@ export function SiteFooter() {
           <a href="mailto:hi@cronkick.xyz" className={link}>hi@cronkick.xyz</a>
         </nav>
       </div>
+      {/* fal-style sign-off: the lockup at full width, cut by the page edge */}
+      <div className={`${container} pb-0`}><Lockup className="-mb-[3%] h-auto w-full text-white/[0.06] [&_path:first-child]:fill-white/[0.06]" /></div>
     </footer>
   );
 }
