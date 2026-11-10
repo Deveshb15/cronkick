@@ -1,15 +1,15 @@
-# /etc/systemd/system/ontime.service
+# /etc/systemd/system/cronkick.service
 [Unit]
-Description=Ontime (GitHub Actions on-time cron)
+Description=Cronkick (GitHub Actions on-time cron)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=ontime
-WorkingDirectory=/opt/ontime
-EnvironmentFile=/etc/ontime/env
+User=cronkick
+WorkingDirectory=/opt/cronkick
+EnvironmentFile=/etc/cronkick/env
 # tsx directly (not npm) so SIGTERM reaches the app and in-flight dispatches drain.
-ExecStart=/opt/ontime/node_modules/.bin/tsx src/main.ts
+ExecStart=/opt/cronkick/node_modules/.bin/tsx src/main.ts
 Restart=always
 RestartSec=2
 # The app drains in-flight dispatches on SIGTERM (up to 15 s).

@@ -3,7 +3,7 @@ import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie';
 import type { App } from '@octokit/app';
 
 export type Session = { login: string; installs: number[]; exp: number };
-const COOKIE = 'ontime_session';
+const COOKIE = 'cronkick_session';
 const TTL_MS = 60 * 60_000; // short, so losing access to an org takes effect within the hour
 
 /** GitHub sign-in, as an interface so tests can fake it. */

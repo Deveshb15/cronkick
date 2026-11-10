@@ -1,8 +1,8 @@
 # Probe repos (PRD R16)
 
-These measure GitHub's own scheduler for the public `/lateness` page. They don't use Ontime.
+These measure GitHub's own scheduler for the public `/lateness` page. They don't use Cronkick.
 
-1. Create 4–6 repos: public and private, one brand new and one older. Example names: `ontime-probe-pub-new`, `ontime-probe-priv-old`.
+1. Create 4–6 repos: public and private, one brand new and one older. Example names: `cronkick-probe-pub-new`, `cronkick-probe-priv-old`.
 2. Copy `workflows/every-5.yml` and `workflows/hourly.yml` into each repo's `.github/workflows/`. Keep the file names: the collector looks for these exact paths.
 3. Create a fine-grained token with **Actions: read** on just those repos.
 4. Set `PROBE_REPOS=owner/a,owner/b,...` and `PROBE_TOKEN=...` on the server.

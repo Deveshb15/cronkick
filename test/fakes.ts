@@ -35,7 +35,7 @@ export function fakeDeps(db: Db, now: Date) {
     gh: new FakeGitHub(),
     mailer: { async send(m) { if (failMail) throw new Error('resend 500'); sent.push(m); } },
     now: () => clock.now,
-    baseUrl: 'https://ontime.test',
+    baseUrl: 'https://cronkick.test',
   };
   return { deps, gh: deps.gh as FakeGitHub, sent, clock, setFailMail: (v: boolean) => { failMail = v; } };
 }

@@ -36,13 +36,13 @@ export function webApp(deps: Deps, opts: WebOpts) {
 
   app.get('/', async (c) => {
     const s = await readSession(c, opts.sessionSecret);
-    return c.html(page('Ontime: on-time cron for GitHub Actions', html`
-<h1>Keep your cron in your repo. Ontime triggers it on time.</h1>
-<p>GitHub's <code>schedule:</code> trigger is best-effort and has been dropping runs. Ontime calls <code>workflow_dispatch</code> on our own clock.
+    return c.html(page('Cronkick: on-time cron for GitHub Actions', html`
+<h1>Keep your cron in your repo. Cronkick triggers it on time.</h1>
+<p>GitHub's <code>schedule:</code> trigger is best-effort and has been dropping runs. Cronkick calls <code>workflow_dispatch</code> on our own clock.
 No personal access token, nothing to configure outside your workflow file, and a record of every slot.</p>
 <pre>on:
-  workflow_dispatch: # ontime: "17 * * * *"
-  # ontime: "0 9 * * 1-5" tz=Europe/Berlin</pre>
+  workflow_dispatch: # cronkick: "17 * * * *"
+  # cronkick: "0 9 * * 1-5" tz=Europe/Berlin</pre>
 <p><a href="https://github.com/apps/${opts.appSlug}/installations/new"><button>Install the GitHub App</button></a>
 ${s ? html` <a href="/dashboard">Your dashboard</a>` : ''}</p>
 <p class="muted">Free: 1 repo, 3 schedules, every 15 min or slower. Pro: $9/mo or $90/yr, 50 schedules, every 5 min, email alerts, 90-day history.
@@ -92,7 +92,7 @@ We control the trigger, not GitHub's runners; when GitHub's API fails we show it
   authed.get('/dashboard', async (c) => {
     const s = c.get('session');
     const { rows } = await db.query('SELECT id, account_login, plan FROM installations WHERE id = ANY($1) AND NOT removed ORDER BY account_login', [s.installs]);
-    return c.html(page('Dashboard · Ontime', html`<h1>Your installations</h1>
+    return c.html(page('Dashboard · Cronkick', html`<h1>Your installations</h1>
 ${rows.length ? html`<ul>${rows.map((r) => html`<li><a href="/i/${r.id}">${r.account_login}</a> <span class="pill">${r.plan}</span></li>`)}</ul>`
     : html`<p>No installations yet. <a href="https://github.com/apps/${opts.appSlug}/installations/new">Install the App</a>, then sign in again.</p>`}`, s.login));
   });
@@ -111,7 +111,7 @@ ${rows.length ? html`<ul>${rows.map((r) => html`<li><a href="/i/${r.id}">${r.acc
     );
     const relevant = rows.filter((w) => w.schedules.length || w.flags.length || w.suggested_diff);
     const limits = PLANS[inst.plan as 'free' | 'pro'];
-    return c.html(page(`${inst.account_login} · Ontime`, html`
+    return c.html(page(`${inst.account_login} · Cronkick`, html`
 <h1>${inst.account_login} <span class="pill">${inst.plan}</span></h1>
 <p class="muted">Limits: ${limits.repos === Infinity ? 'any number of repos' : `${limits.repos} repo`}, ${limits.schedules} schedules, every ${limits.floorMinutes} min or slower.
 Schedules over the limit are paused, never charged.</p>
@@ -122,8 +122,8 @@ ${relevant.length ? relevant.map((w) => html`<section>
 <h3><a href="/i/${id}/w/${w.id}">${w.full_name} · ${w.name}</a> <span class="muted">${w.path}</span></h3>
 ${w.schedules.map((s: any) => html`<div><code>${s.cron}</code> ${s.tz} <span class="pill">${w.flags.length ? 'not active (see below)' : s.status === 'paused_limit' ? 'paused: plan limit' : 'active'}</span></div>`)}
 ${w.flags.map((f: any) => html`<p class="flag">⚠ ${f.message}</p>`)}
-${w.suggested_diff && !w.schedules.length ? html`<p>To switch this workflow to Ontime, add <code>workflow_dispatch:</code> under <code>on:</code>, add these lines below it, and remove the <code>schedule:</code> block:</p><pre>${w.suggested_diff}</pre>` : ''}
-</section>`) : html`<p class="muted">No workflows with an <code># ontime:</code> marker or a native schedule yet.</p>`}`, c.get('session').login));
+${w.suggested_diff && !w.schedules.length ? html`<p>To switch this workflow to Cronkick, add <code>workflow_dispatch:</code> under <code>on:</code>, add these lines below it, and remove the <code>schedule:</code> block:</p><pre>${w.suggested_diff}</pre>` : ''}
+</section>`) : html`<p class="muted">No workflows with an <code># cronkick:</code> marker or a native schedule yet.</p>`}`, c.get('session').login));
   });
 
   authed.post('/i/:id/email', async (c) => {
@@ -150,7 +150,7 @@ ${w.suggested_diff && !w.schedules.length ? html`<p>To switch this workflow to O
       (await db.query(`SELECT state, count(*)::int AS n FROM slots WHERE ${window} GROUP BY state`, [wid, now])).rows.map((r) => [r.state, r.n]),
     );
     const next = (await db.query(`SELECT due_at FROM slots WHERE workflow_id = $1 AND due_at > $2 AND state = 'pending' ORDER BY due_at LIMIT 1`, [wid, now])).rows[0];
-    return c.html(page(`${w.name} · Ontime`, html`
+    return c.html(page(`${w.name} · Cronkick`, html`
 <p><a href="/i/${id}">← ${w.full_name}</a></p><h1>${w.name}</h1>
 ${stateCounts(counts)}
 <p class="muted">${limits.historyRows ? `Last ${limits.historyRows} slots (Free).` : `Last ${limits.historyDays} days${rows.length === MAX_ROWS ? `, newest ${MAX_ROWS} shown` : ''}.`} Next slot: ${next ? next.due_at.toISOString() : 'none scheduled'}.

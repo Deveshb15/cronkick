@@ -11,10 +11,10 @@ beforeEach(async () => { db?.end(); db = await freshDb(); });
 afterAll(() => db.end());
 
 const T0 = new Date('2026-11-10T12:00:00Z');
-const opts = { webhookSecret: 'whsec', sessionSecret: 'sess', appSlug: 'ontime', contactEmail: 'hi@ontime.test', oauth: { authorizeUrl: (s: string) => `https://github.com/login/oauth/authorize?state=${s}`, exchange: async () => ({ login: 'octo', installs: [1] }) } };
+const opts = { webhookSecret: 'whsec', sessionSecret: 'sess', appSlug: 'cronkick', contactEmail: 'hi@cronkick.test', oauth: { authorizeUrl: (s: string) => `https://github.com/login/oauth/authorize?state=${s}`, exchange: async () => ({ login: 'octo', installs: [1] }) } };
 
 async function cookieFor(installs: number[]) {
-  const c = await generateSignedCookie('ontime_session', JSON.stringify({ login: 'octo', installs, exp: Date.now() + 60_000 }), 'sess');
+  const c = await generateSignedCookie('cronkick_session', JSON.stringify({ login: 'octo', installs, exp: Date.now() + 60_000 }), 'sess');
   return c.split(';')[0];
 }
 function app() {
@@ -99,7 +99,7 @@ test('login flow: state is checked', async () => {
   expect((await a.request(`/callback?code=c&state=wrong`, { headers: { cookie: stateCookie } })).status).toBe(400);
   const ok = await a.request(`/callback?code=c&state=${state}`, { headers: { cookie: stateCookie } });
   expect(ok.status).toBe(302);
-  expect(ok.headers.get('set-cookie')).toContain('ontime_session');
+  expect(ok.headers.get('set-cookie')).toContain('cronkick_session');
 });
 
 test('lateness page says collecting when there is no data', async () => {
@@ -122,6 +122,6 @@ test('privacy and terms pages are public', async () => {
   for (const path of ['/privacy', '/terms']) {
     const res = await a.request(path);
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain('hi@ontime.test');
+    expect(await res.text()).toContain('hi@cronkick.test');
   }
 });

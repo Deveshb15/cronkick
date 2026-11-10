@@ -1,4 +1,6 @@
-# Ontime: on-time cron for GitHub Actions (working name)
+# Cronkick (was Ontime): on-time cron for GitHub Actions
+
+> Renamed 2026-11-10. Product name **Cronkick**, domain **cronkick.xyz**, workflow marker `# cronkick: "<cron>"`. The rest of this spec still says Ontime and `# ontime:`; read them as Cronkick.
 
 Product spec v0.2 · 2026-11-10 · Owner: Devesh
 Sources: `../research/round10-opus-critique.md` §3–4, `../research/round10-gpt-critique.md` §1, §4, and the round-11 competitor research (`../research/round11-opus.md`, `../research/round11-gpt.md`). Facts marked **[V]** were verified on 2026-11-10. **[G]** marks a guess or hypothesis.

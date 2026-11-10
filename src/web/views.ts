@@ -19,7 +19,7 @@ input{padding:6px;border:1px solid var(--line);border-radius:6px;background:var(
 export function page(title: string, body: H, login?: string): H {
   return html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title><style>${raw(css)}</style></head><body>
-<header><a href="/"><strong>Ontime</strong></a><span>${login ? html`${login} · <a href="/logout">Sign out</a>` : html`<a href="/login">Sign in with GitHub</a>`}</span></header>
+<header><a href="/"><strong>Cronkick</strong></a><span>${login ? html`${login} · <a href="/logout">Sign out</a>` : html`<a href="/login">Sign in with GitHub</a>`}</span></header>
 <main>${body}</main><footer><main class="muted"><a href="/lateness">Lateness</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></main></footer></body></html>`;
 }
 
@@ -55,5 +55,5 @@ ${any ? html`<table><thead><tr><th>Schedule</th><th>Repos</th><th>Expected slots
 ${reports.map((r) => html`<tr><td><code>${r.cron}</code></td><td>${r.repos}</td><td>${r.stats.expected}</td><td>${r.stats.ran}</td>
 <td>${(r.stats.missingShare * 100).toFixed(1)}%</td><td>${fmt(r.stats.p50Sec)}</td><td>${fmt(r.stats.p95Sec)}</td></tr>`)}
 </tbody></table>` : html`<p><strong>Collecting data.</strong> The first numbers appear an hour after the probes start.</p>`}
-<p>Ontime triggers your workflows through <code>workflow_dispatch</code> on our clock instead. <a href="/">How it works</a>.</p>`, login);
+<p>Cronkick triggers your workflows through <code>workflow_dispatch</code> on our clock instead. <a href="/">How it works</a>.</p>`, login);
 }

@@ -10,7 +10,7 @@ beforeEach(async () => { db?.end(); db = await freshDb(); });
 afterAll(() => db.end());
 
 const T0 = new Date('2026-11-10T00:00:30Z');
-const wf = (crons: string[]) => `on:\n  workflow_dispatch:\n${crons.map((c) => `  # ontime: "${c}"`).join('\n')}\njobs: {}\n`;
+const wf = (crons: string[]) => `on:\n  workflow_dispatch:\n${crons.map((c) => `  # cronkick: "${c}"`).join('\n')}\njobs: {}\n`;
 const FIVE = ['0 */2 * * *', '15 */2 * * *', '30 */2 * * *', '45 */2 * * *', '0 1-23/2 * * *']; // 15 min apart
 const statuses = async () => (await db.query(`SELECT status, count(*)::int AS n FROM schedules GROUP BY status ORDER BY status`)).rows;
 

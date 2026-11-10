@@ -24,7 +24,7 @@ export async function sendLimitNotice(deps: Deps, installationId: number, paused
   try {
     await deps.mailer.send({
       to,
-      subject: `Ontime: ${paused} schedule${paused === 1 ? '' : 's'} paused by your plan limit`,
+      subject: `Cronkick: ${paused} schedule${paused === 1 ? '' : 's'} paused by your plan limit`,
       text: `Your ${rows[0].plan} plan's limit was reached, so ${paused} schedule(s) are paused and won't be triggered. Nothing was charged.\n\nSee which ones: ${deps.baseUrl}/i/${installationId}`,
     });
   } catch (e) {
@@ -69,7 +69,7 @@ export async function sendSlotAlerts(deps: Deps): Promise<number> {
     try {
       await deps.mailer.send({
         to,
-        subject: `Ontime: ${r.full_name} · ${r.name} — ${r.kind.replace('_', ' ')} (${r.due_at.toISOString()})`,
+        subject: `Cronkick: ${r.full_name} · ${r.name} — ${r.kind.replace('_', ' ')} (${r.due_at.toISOString()})`,
         text: `${what}\n\nSlot due ${r.due_at.toISOString()}.\nHistory: ${deps.baseUrl}/i/${r.installation_id}/w/${r.workflow_id}`,
       });
       sent++;

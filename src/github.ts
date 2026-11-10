@@ -4,7 +4,7 @@ export type RepoInfo = { id: number; fullName: string; defaultBranch: string };
 export type WorkflowInfo = { id: number; path: string; name: string; state: string };
 export type DispatchResult = { status: number; runId?: number; runUrl?: string; retryAfterMs?: number; note?: string };
 
-/** Everything Ontime asks GitHub, as an interface so tests can use a fake. */
+/** Everything Cronkick asks GitHub, as an interface so tests can use a fake. */
 export interface GitHub {
   /** Every installation of the App (used by the daily reconcile). */
   listInstallations(): Promise<{ id: number; account: { login: string; type: string } }[]>;

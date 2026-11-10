@@ -21,7 +21,7 @@ function setup(opts: { plan?: 'free' | 'pro' } = {}) {
   f.gh.installations = [install];
   f.gh.repos = [{ id: 10, fullName: 'acme/app', defaultBranch: 'main' }, { id: 11, fullName: 'acme/docs', defaultBranch: 'main' }];
   f.gh.workflows.set('acme/app', [{ id: 100, path: '.github/workflows/nightly.yml', name: 'nightly' }, { id: 101, path: '.github/workflows/ci.yml', name: 'ci' }]);
-  f.gh.files.set('acme/app:.github/workflows/nightly.yml', wf('# ontime: "*/15 * * * *"'));
+  f.gh.files.set('acme/app:.github/workflows/nightly.yml', wf('# cronkick: "*/15 * * * *"'));
   f.gh.files.set('acme/app:.github/workflows/ci.yml', 'on: push\njobs: {}\n');
   return { ...f, install: async () => {
     await handleEvent(f.deps, 'installation', { action: 'created', installation: install });
@@ -97,7 +97,7 @@ test('repo removed from the installation stops its schedules', async () => {
 
 test('flagged workflow is never activated: slots are skipped', async () => {
   const s = setup();
-  s.gh.files.set('acme/app:.github/workflows/nightly.yml', `on:\n  push: # ontime: "*/15 * * * *"\njobs: {}\n`);
+  s.gh.files.set('acme/app:.github/workflows/nightly.yml', `on:\n  push: # cronkick: "*/15 * * * *"\njobs: {}\n`);
   await s.install();
   expect(await count(`SELECT count(*)::int AS n FROM slots WHERE state = 'pending'`)).toBe(0);
   expect(await count(`SELECT count(*)::int AS n FROM slots WHERE state = 'skipped'`)).toBe(8);

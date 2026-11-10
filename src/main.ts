@@ -19,7 +19,7 @@ await migrate(db);
 const gh = githubApp(cfg);
 const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl };
 const app = webApp(deps, { webhookSecret: cfg.webhookSecret, sessionSecret: cfg.sessionSecret, appSlug: cfg.appSlug, contactEmail: cfg.contactEmail, oauth: githubOAuth(gh, `${cfg.baseUrl}/callback`) });
-const server = serve({ fetch: app.fetch, port: cfg.port }, (i) => console.log(`ontime listening on :${i.port}`));
+const server = serve({ fetch: app.fetch, port: cfg.port }, (i) => console.log(`cronkick listening on :${i.port}`));
 
 let stopping = false;
 /** Run fn every `ms`, never overlapping itself. Resolves when stopped and the last run has finished. */

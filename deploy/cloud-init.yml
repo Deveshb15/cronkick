@@ -1,13 +1,13 @@
 #cloud-config
-# Base setup for an Ontime droplet. Pass with: doctl compute droplet create ... --user-data-file deploy/cloud-init.yml
+# Base setup for an Cronkick droplet. Pass with: doctl compute droplet create ... --user-data-file deploy/cloud-init.yml
 package_update: true
 packages: [curl, rsync]
 runcmd:
   - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   - apt-get install -y nodejs
-  - useradd --system --home /opt/ontime --shell /usr/sbin/nologin ontime || true
-  - mkdir -p /opt/ontime /etc/ontime
-  - chown ontime:ontime /opt/ontime
-  - chmod 700 /etc/ontime
+  - useradd --system --home /opt/cronkick --shell /usr/sbin/nologin cronkick || true
+  - mkdir -p /opt/cronkick /etc/cronkick
+  - chown cronkick:cronkick /opt/cronkick
+  - chmod 700 /etc/cronkick
   # Triggers are only as on-time as this clock.
   - timedatectl set-ntp true

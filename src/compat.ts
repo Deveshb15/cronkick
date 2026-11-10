@@ -18,12 +18,12 @@ export function importFromSchedule(on: On): string | null {
   const entries = Array.isArray(on.schedule) ? on.schedule : [];
   const lines = entries
     .filter((e: any) => typeof e?.cron === 'string')
-    .map((e: any) => `# ontime: "${e.cron}"${e.timezone ? ` tz=${e.timezone}` : ''}`);
+    .map((e: any) => `# cronkick: "${e.cron}"${e.timezone ? ` tz=${e.timezone}` : ''}`);
   return lines.length ? lines.join('\n') : null;
 }
 
 /**
- * Everything that must be true before Ontime turns a workflow on.
+ * Everything that must be true before Cronkick turns a workflow on.
  * Any flag means the workflow is never activated silently.
  */
 export function checkWorkflow(text: string, floorMinutes: number): WorkflowCheck {
@@ -38,12 +38,12 @@ export function checkWorkflow(text: string, floorMinutes: number): WorkflowCheck
   const suggestedDiff = importFromSchedule(on);
   if (!markers.length && !flags.length) return { markers, flags, suggestedDiff };
 
-  if (!('workflow_dispatch' in on)) flags.push({ message: 'Add `workflow_dispatch:` under `on:` — Ontime triggers the workflow through it.' });
+  if (!('workflow_dispatch' in on)) flags.push({ message: 'Add `workflow_dispatch:` under `on:` — Cronkick triggers the workflow through it.' });
   const inputs = on.workflow_dispatch?.inputs ?? {};
   for (const [name, input] of Object.entries<any>(inputs)) {
-    if (input?.required && input.default === undefined) flags.push({ message: `The workflow_dispatch input "${name}" is required and has no default, so Ontime can't trigger it.` });
+    if (input?.required && input.default === undefined) flags.push({ message: `The workflow_dispatch input "${name}" is required and has no default, so Cronkick can't trigger it.` });
   }
-  if ('schedule' in on) flags.push({ message: 'Remove the native `schedule:` block, or GitHub and Ontime will both run it.' });
+  if ('schedule' in on) flags.push({ message: 'Remove the native `schedule:` block, or GitHub and Cronkick will both run it.' });
   if (/github\.event\.schedule/.test(text)) flags.push({ message: '`github.event.schedule` is empty for dispatched runs. Remove or replace it.' });
   if (/event_name\s*[!=]=\s*['"]schedule['"]/.test(text)) flags.push({ message: "`github.event_name == 'schedule'` is false for dispatched runs; check for 'workflow_dispatch' too." });
   if (markers.length) {

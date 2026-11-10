@@ -1,4 +1,4 @@
-# Probe: uses only GitHub's native scheduler, so the lateness page measures GitHub, not Ontime.
+# Probe: uses only GitHub's native scheduler, so the lateness page measures GitHub, not Cronkick.
 name: probe every 5 min
 on:
   schedule:
