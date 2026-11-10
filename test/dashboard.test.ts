@@ -38,6 +38,7 @@ test('overview: on-time counts only fired slots within 30 s; problems counted; s
   await slot(15, 'expired', null);
   await slot(20, 'skipped', null);
   await slot(60 * 25, 'accepted', 1); // older than 24 h
+  await slot(-10, 'pending', null);    // upcoming: not a run yet
   const { repos, totals } = await overview(db, 1, NOW);
   expect(repos[0].workflows[0]).toMatchObject({ status: 'active', due24h: 3, onTime24h: 1, problems24h: 1, lastState: 'accepted' });
   expect(totals).toMatchObject({ activeSchedules: 1, due24h: 3, onTime24h: 1, problems24h: 1 });

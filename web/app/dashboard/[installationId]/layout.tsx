@@ -38,7 +38,7 @@ export default async function Shell({ children, params }: { children: ReactNode;
         <div className="px-4 pb-4">{nav}</div>
       </details>
       <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
-        <div className="mx-auto max-w-5xl"><div className="mb-6 flex justify-end"><LiveRefresh /></div>{children}</div>
+        <div className="mx-auto max-w-5xl"><div className="mb-6 flex justify-end"><LiveRefresh installationId={id} /></div>{children}</div>
       </main>
     </div>
   );

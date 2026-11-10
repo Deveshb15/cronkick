@@ -7,3 +7,4 @@ node_modules
 *.crt
 web/.next
 *.tsbuildinfo
+web/.deployment-id

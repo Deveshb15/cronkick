@@ -4,14 +4,20 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ $# -gt 0 ] || { echo "usage: deploy/push.sh <droplet ip> [...]"; exit 1; }
+# Every server gets the same deployment id, so a browser moving between them never sees a version mismatch.
+DPL="$(git rev-parse --short HEAD)-$(date +%s)"
 for host in "$@"; do
   echo "==> $host"
   # Only files tracked in git: local secrets (.env.production, *.pem) never leave this machine.
   git ls-files | grep -v -E '^(test|docs|probe)/' | rsync -az --files-from=- ./ "root@$host:/opt/cronkick/"
+  ssh "root@$host" "echo $DPL > /opt/cronkick/web/.deployment-id"
   ssh "root@$host" 'set -e
     cd /opt/cronkick && chown -R cronkick:cronkick .
     sudo -u cronkick npm ci --silent
-    sudo -u cronkick node_modules/.bin/next build web >/tmp/next-build.log 2>&1 || { tail -30 /tmp/next-build.log; exit 1; }
+    # Same Server Actions key on every server (set once in /etc/cronkick/env), so a form rendered by one server works on the other.
+    KEY=$(grep "^NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=" /etc/cronkick/env | cut -d= -f2- || true)
+    [ -n "$KEY" ] || { echo "add NEXT_SERVER_ACTIONS_ENCRYPTION_KEY to /etc/cronkick/env (openssl rand -base64 32), same on every server"; exit 1; }
+    sudo -u cronkick env NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$KEY" node_modules/.bin/next build web >/tmp/next-build.log 2>&1 || { tail -30 /tmp/next-build.log; exit 1; }
     cp deploy/cronkick.service deploy/cronkick-web.service /etc/systemd/system/ && systemctl daemon-reload
     test -f /etc/cronkick/env || { echo "missing /etc/cronkick/env"; exit 1; }
     systemctl enable cronkick cronkick-web >/dev/null 2>&1

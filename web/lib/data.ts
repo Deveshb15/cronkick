@@ -71,13 +71,13 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
       GROUP BY w.id ORDER BY w.path`, [installationId],
   )).rows;
 
-  // Per workflow, the last 24 hours of slots that are due: how many, how many fired within 30 s, how many went wrong.
+  // Per workflow, the last 24 hours of slots that are already due (future pending slots are not runs yet): how many, how many fired within 30 s, how many went wrong.
   const stats = new Map((await db.query(
     `SELECT workflow_id,
-            count(*) FILTER (WHERE due_at > $2::timestamptz - interval '24 hours' AND state <> 'skipped')::int AS due,
-            count(*) FILTER (WHERE due_at > $2::timestamptz - interval '24 hours' AND first_attempt_at - due_at <= interval '30 seconds'
+            count(*) FILTER (WHERE due_at <= $2 AND state <> 'skipped')::int AS due,
+            count(*) FILTER (WHERE due_at <= $2 AND first_attempt_at - due_at <= interval '30 seconds'
                                AND state IN ('fired', 'accepted'))::int AS on_time,
-            count(*) FILTER (WHERE due_at > $2::timestamptz - interval '24 hours' AND state IN ('unknown', 'expired'))::int AS problems,
+            count(*) FILTER (WHERE due_at <= $2 AND state IN ('unknown', 'expired'))::int AS problems,
             max(due_at) FILTER (WHERE due_at <= $2) AS last_due,
             (array_agg(state ORDER BY due_at DESC) FILTER (WHERE due_at <= $2))[1] AS last_state,
             min(due_at) FILTER (WHERE due_at > $2 AND state = 'pending') AS next_due
