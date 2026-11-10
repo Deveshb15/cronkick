@@ -10,13 +10,14 @@ const color: Record<Tick, string> = {
 };
 const label: Record<Tick, string> = { ontime: 'on time', late: 'late', missed: 'missed', idle: 'not run' };
 
-export function SlotStrip({ ticks, size = 'md', className = '' }: { ticks: Tick[]; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+/** `tips` adds a hover tooltip per tick (marketing pages). */
+export function SlotStrip({ ticks, size = 'md', className = '', tips }: { ticks: Tick[]; size?: 'sm' | 'md' | 'lg'; className?: string; tips?: string[] }) {
   const h = { sm: 'h-4', md: 'h-6', lg: 'h-10' }[size];
   const counts = ticks.reduce<Record<string, number>>((a, t) => ({ ...a, [t]: (a[t] ?? 0) + 1 }), {});
   const summary = Object.entries(counts).map(([t, n]) => `${n} ${label[t as Tick]}`).join(', ');
   return (
     <div role="img" aria-label={`Last ${ticks.length} slots: ${summary}`} className={`flex items-stretch gap-[2px] ${h} ${className}`}>
-      {ticks.map((t, i) => <span key={i} className={`min-w-[2px] flex-1 rounded-[1px] ${color[t]}`} />)}
+      {ticks.map((t, i) => <span key={i} data-tip={tips?.[i]} className={`min-w-[2px] flex-1 rounded-[1px] ${color[t]} ${tips ? 'tip origin-bottom transition hover:scale-y-125 hover:brightness-125' : ''}`} />)}
     </div>
   );
 }

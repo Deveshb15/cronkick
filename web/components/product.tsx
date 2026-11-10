@@ -90,24 +90,6 @@ export function EventCard() {
   );
 }
 
-/** GitHub's schedule vs Cronkick for the same day, compact. */
-export function CompareCard() {
-  const gh = 'llmlollmmlolllmllmlolmllolllmmllollmlollmlllmolm';
-  return (
-    <div className="w-80 space-y-3">
-      <p className="font-mono text-[0.6875rem]/4 text-zinc-500">same */30 schedule · one day</p>
-      <div>
-        <div className="flex justify-between text-xs/5"><span className="font-mono text-zinc-400">schedule:</span><span className="text-red-300">12 never ran</span></div>
-        <SlotStrip ticks={ticks(gh)} size="sm" className="mt-1" />
-      </div>
-      <div>
-        <div className="flex justify-between text-xs/5"><span className="font-medium">Cronkick</span><span className="text-emerald-300">48 / 48 on time</span></div>
-        <SlotStrip ticks={ticks(all())} size="sm" className="mt-1" />
-      </div>
-    </div>
-  );
-}
-
 /* ---- Bento vignettes ---- */
 
 export function RunTableVignette() {

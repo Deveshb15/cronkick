@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { ComponentProps, ReactNode } from 'react';
 
 const base = 'inline-flex items-center justify-center gap-x-1.5 rounded-lg text-base/6 font-medium whitespace-nowrap sm:text-sm/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500';
-const sizes = { md: 'px-3.5 py-2.5 sm:py-2', sm: 'px-2.5 py-1.5 sm:py-1' };
+const sizes = { lg: 'px-4.5 py-3 sm:py-2.5', md: 'px-3.5 py-2.5 sm:py-2', sm: 'px-2.5 py-1.5 sm:py-1' };
 const variants = {
   // One per page.
   primary: 'bg-brand-500 text-ink hover:bg-brand-400',

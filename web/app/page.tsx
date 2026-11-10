@@ -1,9 +1,10 @@
 import { CheckIcon, MinusIcon, XMarkIcon } from '@heroicons/react/16/solid';
-import { CopyCommand } from '@/components/copy-command';
 import { AppFrame, FloatCard } from '@/components/frame';
 import { GitHubMark } from '@/components/icons';
+import { Symbol } from '@/components/logo';
+import { MarkerCard } from '@/components/marker-card';
 import {
-  AlertVignette, ChartVignette, CompareCard, CompatVignette, DashboardShot, DiffVignette, EventCard,
+  AlertVignette, ChartVignette, CompatVignette, DashboardShot, DiffVignette, EventCard,
   LifecycleVignette, PermissionsVignette, RunTableVignette,
 } from '@/components/product';
 import { BentoCard, SplitHeading } from '@/components/section';
@@ -17,7 +18,8 @@ import { probeReport } from '../../src/probe/collector.ts';
 
 export const dynamic = 'force-dynamic';
 
-const LINE = 'workflow_dispatch: # cronkick: "0 3 * * *"';
+// Sparkles on the hero's time-grid: [column from centre, row], in 64px cells.
+const SPARKS = [[-9, 2], [-7, 5], [-6, 1], [-4, 8], [-3, 3], [-8, 9], [-5, 6], [2, 1], [3, 7], [5, 2], [6, 5], [7, 9], [8, 3], [9, 6], [4, 10], [-2, 11]];
 
 type Cell = boolean | string;
 const compare: [string, Cell, Cell, Cell][] = [
@@ -56,48 +58,41 @@ export default async function Home() {
     <>
       <SiteHeader signedIn={!!session} />
       <main className="overflow-x-clip">
-        {/* Hero */}
-        <section className="relative pt-16 sm:pt-24">
-          <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_1px_1px,rgb(255_255_255/0.07)_1px,transparent_0)] bg-[size:28px_28px] [mask-image:radial-gradient(70%_60%_at_30%_20%,black,transparent)]" />
+        {/* Hero: one centred stack, then the marker card as the product shot */}
+        <section className="relative isolate overflow-hidden pt-14 pb-24 sm:pt-20 sm:pb-28">
+          <div aria-hidden="true" className="time-grid absolute inset-0 -z-10">
+            {SPARKS.map(([x, y], i) => (
+              <span key={i} className="absolute size-2 -translate-1/2 animate-twinkle rounded-full bg-[radial-gradient(circle,var(--color-brand-400),transparent_70%)]" style={{ left: `calc(50% + ${x * 64}px)`, top: y * 64, animationDelay: `${(i * 0.37) % 3}s` }} />
+            ))}
+            <span className="absolute inset-y-0 w-px animate-sweep bg-linear-to-b from-transparent via-brand-400/50 to-transparent" />
+          </div>
           <div aria-hidden="true" className="hero-glow absolute inset-0 -z-10" />
-          <div className={container}>
-            <a href="/lateness" className="inline-flex items-center gap-x-2 rounded-full bg-white/5 py-1 pr-3 pl-1 text-sm/6 text-zinc-300 inset-ring inset-ring-white/10 hover:bg-white/10">
-              <span className="rounded-full bg-red-500/15 px-2 font-mono text-xs/5 font-medium text-red-300 uppercase">live</span>
+          <div className={`${container} flex flex-col items-center text-center`}>
+            <a href="/lateness" className="inline-flex animate-rise items-center gap-x-2 rounded-full bg-white/5 py-1 pr-3 pl-1 text-sm/6 text-zinc-300 inset-ring inset-ring-white/10 transition hover:bg-white/10 hover:inset-ring-brand-500/40">
+              <span className="flex items-center gap-x-1.5 rounded-full bg-red-500/15 px-2 font-mono text-xs/5 font-medium text-red-300 uppercase"><span className="size-1.5 animate-pulse rounded-full bg-red-400" />live</span>
               {pill} <span aria-hidden="true" className="text-zinc-500">→</span>
             </a>
-            <h1 className="mt-8 max-w-[16ch] text-5xl font-semibold tracking-tight text-balance sm:text-7xl lg:text-8xl">Scheduled workflows that run on time.</h1>
-            <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-              <p className="max-w-[48ch] text-lg text-pretty text-zinc-400">
-                GitHub’s schedule trigger is best effort, and lately it delays and drops runs. Cronkick fires your workflows on our own clock from one comment in your workflow file, and records every run.
-              </p>
-              <div className="flex flex-wrap items-center gap-3">
-                <ButtonLink href={installUrl()} variant="primary" className="pl-3"><GitHubMark className="size-4" />Install with GitHub</ButtonLink>
-                <CopyCommand text={LINE} className="max-w-full" />
-              </div>
+            <h1 className="mt-8 max-w-[14ch] text-5xl/[1.02] font-semibold tracking-tight text-balance sm:text-7xl/[1.02] lg:text-[5.5rem]/[1]">
+              {['One', 'comment.', 'Every', 'run'].map((w, i) => <span key={w} className="inline-block animate-rise" style={{ animationDelay: `${120 + i * 70}ms` }}>{w}&nbsp;</span>)}
+              <span className="inline-block bg-[linear-gradient(90deg,var(--color-brand-300),var(--color-brand-500),#ff8a1f,var(--color-brand-300))] bg-size-[200%_auto] bg-clip-text text-transparent" style={{ animation: 'rise .9s cubic-bezier(.2,.7,.2,1) 400ms backwards, shimmer 6s linear infinite' }}>on time.</span>
+            </h1>
+            <p className="mt-6 max-w-[52ch] animate-rise text-lg text-pretty text-zinc-400 [animation-delay:480ms]">
+              GitHub’s cron is best effort: runs start late or never. Add one comment to your workflow and Cronkick triggers it on the minute, with no tokens and nothing to host.
+            </p>
+            <div className="mt-10 flex animate-rise flex-wrap items-center justify-center gap-3 [animation-delay:580ms]">
+              <ButtonLink href={installUrl()} variant="primary" size="lg" className="btn-glow"><GitHubMark className="size-4" />Install with GitHub</ButtonLink>
+              <ButtonLink href="#how-it-works" size="lg" className="group">See how it works <span aria-hidden="true" className="transition group-hover:translate-x-0.5">→</span></ButtonLink>
             </div>
+            <div className="mt-16 w-full animate-rise [animation-delay:720ms] sm:mt-20"><MarkerCard /></div>
+            <dl className="mt-16 grid w-full max-w-3xl animate-rise divide-white/10 [animation-delay:900ms] max-sm:divide-y sm:mt-20 sm:grid-cols-3 sm:divide-x">
+              {[['≤ 30 s', 'first trigger, p99 target'], ['0 tokens', 'to create, paste or rotate'], ['Every slot', 'recorded with its result']].map(([v, k]) => (
+                <div key={v} className="flex flex-col-reverse py-4 sm:px-6">
+                  <dt className="mt-1 text-sm/6 text-zinc-500">{k}</dt>
+                  <dd className="font-mono text-2xl font-medium tracking-tight">{v}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-          {/* Product shot, bleeding off the right edge, with layered cards */}
-          <div className={`${container} relative mt-16 sm:mt-20`}>
-            <div className="relative lg:-mr-56">
-              <AppFrame url="cronkick.xyz/dashboard" className="[mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
-                <DashboardShot />
-              </AppFrame>
-              <FloatCard className="absolute top-60 right-64 max-lg:hidden"><EventCard /></FloatCard>
-              <FloatCard className="absolute -bottom-6 left-10 max-lg:hidden"><CompareCard /></FloatCard>
-            </div>
-          </div>
-        </section>
-
-        {/* Proof strip */}
-        <section className="border-y border-white/5">
-          <dl className={`${container} grid grid-cols-2 lg:grid-cols-4`}>
-            {[['1 line', 'to change in your workflow'], ['0 tokens', 'to create, paste or rotate'], ['Every slot', 'recorded, with the run’s result'], ['2 minutes', 'from install to first run']].map(([v, k], i) => (
-              <div key={v} className={`py-8 ${i % 2 ? 'pl-6 lg:pl-8' : 'pr-6 lg:pr-8'} ${i > 0 ? 'lg:border-l lg:border-white/5 lg:pl-8' : ''} ${i === 1 ? 'border-l border-white/5' : ''} ${i === 3 ? 'border-l border-white/5' : ''} ${i >= 2 ? 'max-lg:border-t max-lg:border-white/5' : ''}`}>
-                <dd className="text-2xl font-semibold tracking-tight">{v}</dd>
-                <dt className="mt-1 text-base/6 text-zinc-400 sm:text-sm/6">{k}</dt>
-              </div>
-            ))}
-          </dl>
         </section>
 
         {/* The problem */}
@@ -107,6 +102,19 @@ export default async function Home() {
               <p>GitHub queues scheduled runs behind everything else and drops them under load. Same schedule, same day: here is the difference. <a href="/lateness" className="font-medium text-white hover:underline">See live numbers →</a></p>
             </SplitHeading>
             <div className="mt-14"><TimelineCompare /></div>
+          </div>
+        </section>
+
+        {/* Dashboard: tilts flat as it scrolls in */}
+        <section className="border-t border-white/5 py-24 sm:py-32">
+          <div className={container}>
+            <SplitHeading eyebrow="The dashboard" title="Every run, on one screen.">
+              <p>Each workflow gets a strip of its recent slots, its on-time rate and its next run. Open a workflow for the full history.</p>
+            </SplitHeading>
+            <div className="reveal-tilt relative mt-14">
+              <AppFrame url="cronkick.xyz/dashboard"><DashboardShot /></AppFrame>
+              <FloatCard className="absolute -right-4 -bottom-8 transition duration-300 hover:-translate-y-1 max-lg:hidden"><EventCard /></FloatCard>
+            </div>
           </div>
         </section>
 
@@ -129,7 +137,7 @@ export default async function Home() {
         </section>
 
         {/* Setup */}
-        <section className="border-t border-white/5 py-24 sm:py-32">
+        <section id="how-it-works" className="scroll-mt-16 border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="Setup" title="Two minutes, three steps.">
               <p>No SDK, no agent, no dashboard to configure. If it runs on GitHub Actions today, it runs on time with Cronkick.</p>
@@ -140,8 +148,8 @@ export default async function Home() {
                 ['02', 'Swap the trigger', <>Replace <Code>schedule:</Code> with <Code>workflow_dispatch:</Code> and a <Code># cronkick</Code> comment holding the same cron.</>],
                 ['03', 'Push', <>Cronkick reads the file on push and starts firing on the next slot. Every run shows up in your dashboard.</>],
               ].map(([n, t, d]) => (
-                <li key={n as string} className="border-t border-white/10 pt-6">
-                  <p className="font-mono text-sm/6 text-brand-400">{n}</p>
+                <li key={n as string} className="reveal group border-t border-white/10 pt-6 transition-colors hover:border-brand-500/60">
+                  <p className="font-mono text-sm/6 text-zinc-500 transition-colors group-hover:text-brand-400">{n}</p>
                   <h3 className="mt-2 text-lg font-semibold">{t}</h3>
                   <p className="mt-2 text-base/7 text-pretty text-zinc-400 sm:text-sm/6">{d}</p>
                 </li>
@@ -169,7 +177,7 @@ export default async function Home() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {compare.map(([f, a, b, c]) => (
-                      <tr key={f}>
+                      <tr key={f} className="transition-colors hover:bg-white/[0.03]">
                         <td className="py-4 pr-6 font-medium">{f}</td>
                         <td className="px-6 py-4"><Mark v={a} /></td>
                         <td className="px-6 py-4"><Mark v={b} /></td>
@@ -191,7 +199,7 @@ export default async function Home() {
             </SplitHeading>
             <div className="mt-14 grid gap-4 md:grid-cols-2">
               {plans.map((p) => (
-                <div key={p.name} className="flex flex-col justify-between rounded-2xl bg-zinc-900/50 p-8 inset-ring inset-ring-white/10">
+                <div key={p.name} className={`reveal flex flex-col justify-between rounded-2xl p-8 transition duration-300 hover:-translate-y-1 ${p.badge ? 'border-spin shadow-[0_20px_80px_-30px_rgb(255_176_32/0.35)]' : 'bg-zinc-900/50 inset-ring inset-ring-white/10 hover:inset-ring-white/20'}`}>
                   <div>
                     <div className="flex items-center justify-between gap-x-4">
                       <h3 className="text-lg font-semibold">{p.name}</h3>
@@ -205,7 +213,7 @@ export default async function Home() {
                   </div>
                   <div className="mt-10">
                     {/* ponytail: Pro is set by hand until checkout (Polar/Dodo) exists; its CTA emails us. */}
-                    <ButtonLink href={p.href} className="w-full">{p.github && <GitHubMark className="size-4" />}{p.cta}</ButtonLink>
+                    <ButtonLink href={p.href} variant={p.badge ? 'primary' : 'secondary'} className={`w-full ${p.badge ? 'btn-glow' : ''}`}>{p.github && <GitHubMark className="size-4" />}{p.cta}</ButtonLink>
                   </div>
                 </div>
               ))}
@@ -236,11 +244,15 @@ export default async function Home() {
         <section className="relative border-t border-white/5 py-24 sm:py-32">
           <div aria-hidden="true" className="hero-glow absolute inset-0 -z-10" />
           <div className={`${container} text-center`}>
-            <h2 className="mx-auto max-w-[20ch] text-4xl font-semibold tracking-tight text-balance sm:text-6xl">Stop wondering if last night’s job ran.</h2>
+            <div className="reveal relative mx-auto mb-10 size-16">
+              <div aria-hidden="true" className="absolute inset-0 animate-pulse rounded-2xl bg-brand-500/40 blur-2xl" />
+              <div className="relative grid size-16 place-items-center rounded-2xl bg-zinc-900 inset-ring inset-ring-white/10"><Symbol className="size-9" /></div>
+            </div>
+            <h2 className="reveal mx-auto max-w-[20ch] text-4xl font-semibold tracking-tight text-balance sm:text-6xl">Stop wondering if last night’s job ran.</h2>
             <p className="mx-auto mt-6 max-w-[48ch] text-lg text-pretty text-zinc-400">Free for one repository. Two minutes to set up.</p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-              <ButtonLink href={installUrl()} className="pl-3"><GitHubMark className="size-4" />Install with GitHub</ButtonLink>
-              <ButtonLink href="/lateness" variant="ghost">See GitHub’s lateness <span aria-hidden="true">→</span></ButtonLink>
+              <ButtonLink href={installUrl()} variant="primary" size="lg" className="btn-glow"><GitHubMark className="size-4" />Install with GitHub</ButtonLink>
+              <ButtonLink href="/lateness" variant="ghost" size="lg">See GitHub’s lateness <span aria-hidden="true">→</span></ButtonLink>
             </div>
           </div>
         </section>
