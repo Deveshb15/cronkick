@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 export class ConfigError extends Error {}
 
 function need(name: string): string {
@@ -18,7 +20,10 @@ export function loadConfig() {
     baseUrl: need('BASE_URL'),
     appId: need('GITHUB_APP_ID'),
     appSlug: need('GITHUB_APP_SLUG'),
-    privateKey: need('GITHUB_PRIVATE_KEY').replace(/\\n/g, '\n'),
+    // A file is the safe way on servers (systemd env files mangle \n); the one-line env var is for local runs.
+    privateKey: process.env.GITHUB_PRIVATE_KEY_FILE
+      ? readFileSync(process.env.GITHUB_PRIVATE_KEY_FILE, 'utf8')
+      : need('GITHUB_PRIVATE_KEY').replace(/\\n/g, '\n'),
     webhookSecret: need('GITHUB_WEBHOOK_SECRET'),
     clientId: need('GITHUB_CLIENT_ID'),
     clientSecret: need('GITHUB_CLIENT_SECRET'),
