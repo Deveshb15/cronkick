@@ -8,7 +8,7 @@ Sources: `../research/round10-opus-critique.md` §3–4, `../research/round10-gp
 v0.2 changes:
 - An honest competitor landscape (§2.1).
 - Timezones and multiple crons per workflow are now in v1.
-- Free tier: 15-minute interval. Pro: annual option, no slot cap.
+- Free tier: 15-minute interval; widened on 2026-11-10 to unlimited repos, 10 schedules and 7 days of history. Pro: annual option, no slot cap.
 - The 30 s target is consistent throughout, and a slot's retry deadline stops at the next slot.
 - Launch leads with the GitHub Marketplace.
 
@@ -138,7 +138,7 @@ You install a GitHub App and change one line in the workflow file. You get a per
 - R10. Respect GitHub API rate limits per installation, and spread out the `0 * * * *` peak (small jitter within the first ~20 s, plus queueing).
 
 ### 6.3 Visibility and alerts
-- R11. Show a per-workflow slot history (last 20 slots on Free, 90 days on paid). Display the full count of slots, including `unknown` and `expired`.
+- R11. Show a per-workflow slot history (7 days on Free, 90 days on paid). Display the full count of slots, including `unknown` and `expired`.
 - R12. Match each fired slot to its run via the returned run ID or the `workflow_run` webhook, and store the conclusion.
 - R13. Paid plans get email when a slot is `unknown` or `expired`, or when a triggered run fails.
 
@@ -157,14 +157,14 @@ You install a GitHub App and change one line in the workflow file. You get a per
 | D1 | What happens to the native `schedule:` block | (a) Remove it: no duplicates, no fallback. (b) Keep it as a backup and cancel GitHub's late runs through the `workflow_run` webhook. | **(a) for v1.** With (b), GitHub's late native run may already have done its side effects before we can cancel it (GPT critique §2). Offer (b) later as an opt-in. |
 | D2 | Where the cron lives | (a) `# ontime:` comments under `workflow_dispatch`. (b) Read the existing `on.schedule` cron. | **(a)**, since D1 removes `schedule:`. One comment per cron, each with an optional `tz=`. Also offer an "import from your existing schedule" button that writes the diff, carrying over every cron and its timezone. |
 | D3 | Pricing | (a) One paid plan at $9. (b) Free + Pro $6 + Team $19. | **Free + Pro at $9/mo or $90/yr per account** (50 schedules, 5-min interval, alerts, 90-day history). $9 sits between the generic crons ($0–8) and the GitHub-targeted ones ($12–29) [V, round 11]. Add Team $19 only once auto re-run exists. |
-| D4 | Free tier | yes / no | **Yes:** 1 repo, 3 schedules, every 15 minutes or slower. Hourly was the stingiest free tier on the market [V, round 11]. The Free tier drives installs and Marketplace ranking. |
+| D4 | Free tier | yes / no | **Yes:** unlimited repos, 10 schedules, every 15 minutes or slower, 7 days of history (widened 2026-11-10 from 1 repo / 3 schedules / 20 slots; alerts stay Pro-only). Hourly was the stingiest free tier on the market [V, round 11]. The Free tier drives installs and Marketplace ranking. |
 | D5 | Name and domain | Ontime / slotcron / cronbeat… | Open. Check that the domain and the GitHub App name are free. |
 
 ## 8. Pricing (proposed, per D3)
 
 | Plan | Price | Limits |
 |---|---|---|
-| Free | $0 | 1 repo · 3 schedules · every 15 min or slower · last 20 slots |
+| Free | $0 | unlimited repos · 10 schedules · every 15 min or slower · 7-day history |
 | Pro | **$9/mo or $90/yr** per GitHub account or org | 50 schedules · 5-minute interval · email alerts · 90-day history |
 
 The limit is schedules, not slots. 50 schedules at 5 minutes is at most about 432k slots/mo, or about 600 dispatches an hour per installation. That's well under GitHub's 5,000 requests an hour per installation [G: check this against GitHub's current rate-limit docs before launch].

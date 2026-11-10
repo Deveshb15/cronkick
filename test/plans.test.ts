@@ -11,7 +11,6 @@ afterAll(() => db.end());
 
 const T0 = new Date('2026-11-10T00:00:30Z');
 const wf = (crons: string[]) => `on:\n  workflow_dispatch:\n${crons.map((c) => `  # cronkick: "${c}"`).join('\n')}\njobs: {}\n`;
-const FIVE = ['0 */2 * * *', '15 */2 * * *', '30 */2 * * *', '45 */2 * * *', '0 1-23/2 * * *']; // 15 min apart
 const statuses = async () => (await db.query(`SELECT status, count(*)::int AS n FROM schedules GROUP BY status ORDER BY status`)).rows;
 
 async function installWith(repos: Record<string, string[]>, plan: 'free' | 'pro') {
@@ -28,9 +27,11 @@ async function installWith(repos: Record<string, string[]>, plan: 'free' | 'pro'
   return f;
 }
 
-test('Free: 5 schedules -> 3 active, 2 paused, one email', async () => {
-  const f = await installWith({ 'acme/app': FIVE }, 'free');
-  expect(await statuses()).toEqual([{ status: 'active', n: 3 }, { status: 'paused_limit', n: 2 }]);
+const TWELVE = Array.from({ length: 12 }, (_, h) => `0 ${h} * * *`); // an hour apart
+
+test('Free: 12 schedules -> 10 active, 2 paused, one email', async () => {
+  const f = await installWith({ 'acme/app': TWELVE }, 'free');
+  expect(await statuses()).toEqual([{ status: 'active', n: 10 }, { status: 'paused_limit', n: 2 }]);
   expect(f.sent).toHaveLength(1);
   expect(f.sent[0].subject).toMatch(/2 schedules paused/);
   await afterChange(f.deps, 1); // re-sync: no second email
@@ -38,15 +39,15 @@ test('Free: 5 schedules -> 3 active, 2 paused, one email', async () => {
 });
 
 test('upgrade to Pro activates everything', async () => {
-  const f = await installWith({ 'acme/app': FIVE }, 'free');
+  const f = await installWith({ 'acme/app': TWELVE }, 'free');
   await db.query(`UPDATE installations SET plan = 'pro'`);
   await afterChange(f.deps, 1);
-  expect(await statuses()).toEqual([{ status: 'active', n: 5 }]);
+  expect(await statuses()).toEqual([{ status: 'active', n: 12 }]);
 });
 
-test('Free: a second repo is paused', async () => {
+test('Free: any number of repos, within the schedule limit', async () => {
   await installWith({ 'acme/app': ['0 * * * *'], 'acme/docs': ['30 * * * *'] }, 'free');
-  expect(await statuses()).toEqual([{ status: 'active', n: 1 }, { status: 'paused_limit', n: 1 }]);
+  expect(await statuses()).toEqual([{ status: 'active', n: 2 }]);
 });
 
 test('Free: every 10 min is flagged by the interval check, not paused', async () => {

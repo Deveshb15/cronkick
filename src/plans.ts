@@ -2,7 +2,7 @@ import type { Db } from './db.ts';
 
 export type PlanName = 'free' | 'pro';
 export const PLANS = {
-  free: { repos: 1, schedules: 3, floorMinutes: 15, historyRows: 20 as number | null, historyDays: null as number | null },
+  free: { repos: Infinity, schedules: 10, floorMinutes: 15, historyRows: null as number | null, historyDays: 7 as number | null },
   pro: { repos: Infinity, schedules: 50, floorMinutes: 5, historyRows: null as number | null, historyDays: 90 as number | null },
 } satisfies Record<PlanName, unknown>;
 

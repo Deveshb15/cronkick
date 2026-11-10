@@ -57,12 +57,12 @@ test('workflow history: another installation’s workflow returns null', async (
   expect(await workflowHistory(db, 1, 100, NOW)).not.toBeNull();
 });
 
-test('workflow history: Free shows the last 20; counts match the window', async () => {
+test('workflow history: Free shows the last 7 days; counts match the window', async () => {
   await seed(db, { plan: 'free' });
-  for (let i = 1; i <= 25; i++) await slot(i, 'fired', 1);
+  for (const days of [1, 3, 6, 8, 30]) await slot(days * 24 * 60, 'fired', 1);
   const h = (await workflowHistory(db, 1, 100, NOW))!;
-  expect(h.slots).toHaveLength(20);
-  expect(h.counts).toEqual({ fired: 20 });
+  expect(h.slots).toHaveLength(3);
+  expect(h.counts).toEqual({ fired: 3 });
 });
 
 test('session: round-trips, rejects tampering and expiry', () => {
