@@ -1,0 +1,5 @@
+# /etc/caddy/Caddyfile — automatic TLS, proxies to the Node app.
+ontime.dev, api.ontime.dev {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000
+}

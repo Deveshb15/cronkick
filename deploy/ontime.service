@@ -1,0 +1,22 @@
+# /etc/systemd/system/ontime.service
+[Unit]
+Description=Ontime (GitHub Actions on-time cron)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ontime
+WorkingDirectory=/opt/ontime
+EnvironmentFile=/etc/ontime/env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=2
+# The app drains in-flight dispatches on SIGTERM (up to 15 s).
+TimeoutStopSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

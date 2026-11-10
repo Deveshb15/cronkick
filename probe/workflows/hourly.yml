@@ -1,0 +1,12 @@
+# Probe: top of the hour, GitHub's busiest minute.
+name: probe hourly
+on:
+  schedule:
+    - cron: "0 * * * *"
+permissions: {}
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo "scheduled tick"

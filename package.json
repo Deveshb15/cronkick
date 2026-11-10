@@ -1,0 +1,31 @@
+{
+  "name": "ontime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "migrate": "tsx scripts/migrate.ts",
+    "plan:set": "tsx scripts/set-plan.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "@octokit/app": "^16.1.4",
+    "cron-parser": "^5.10.4",
+    "hono": "^4.13.17",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

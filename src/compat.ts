@@ -1,0 +1,54 @@
+import { parse } from 'yaml';
+import { parseMarkers, type Flag, type Marker } from './markers.js';
+import { minIntervalMinutes } from './slots.js';
+
+export type WorkflowCheck = { markers: Marker[]; flags: Flag[]; suggestedDiff: string | null };
+
+type On = Record<string, any>;
+
+function triggers(doc: any): On {
+  const on = doc?.on;
+  if (typeof on === 'string') return { [on]: null };
+  if (Array.isArray(on)) return Object.fromEntries(on.map((k) => [k, null]));
+  return on && typeof on === 'object' ? on : {};
+}
+
+/** Marker lines that reproduce a native `schedule:` block, keeping every cron and its timezone. */
+export function importFromSchedule(on: On): string | null {
+  const entries = Array.isArray(on.schedule) ? on.schedule : [];
+  const lines = entries
+    .filter((e: any) => typeof e?.cron === 'string')
+    .map((e: any) => `# ontime: "${e.cron}"${e.timezone ? ` tz=${e.timezone}` : ''}`);
+  return lines.length ? lines.join('\n') : null;
+}
+
+/**
+ * Everything that must be true before Ontime turns a workflow on.
+ * Any flag means the workflow is never activated silently.
+ */
+export function checkWorkflow(text: string, floorMinutes: number): WorkflowCheck {
+  const { markers, flags } = parseMarkers(text);
+  let doc: any;
+  try {
+    doc = parse(text);
+  } catch (e) {
+    return { markers: [], flags: [{ message: `The workflow file isn't valid YAML: ${(e as Error).message}` }], suggestedDiff: null };
+  }
+  const on = triggers(doc);
+  const suggestedDiff = importFromSchedule(on);
+  if (!markers.length && !flags.length) return { markers, flags, suggestedDiff };
+
+  if (!('workflow_dispatch' in on)) flags.push({ message: 'Add `workflow_dispatch:` under `on:` — Ontime triggers the workflow through it.' });
+  const inputs = on.workflow_dispatch?.inputs ?? {};
+  for (const [name, input] of Object.entries<any>(inputs)) {
+    if (input?.required && input.default === undefined) flags.push({ message: `The workflow_dispatch input "${name}" is required and has no default, so Ontime can't trigger it.` });
+  }
+  if ('schedule' in on) flags.push({ message: 'Remove the native `schedule:` block, or GitHub and Ontime will both run it.' });
+  if (/github\.event\.schedule/.test(text)) flags.push({ message: '`github.event.schedule` is empty for dispatched runs. Remove or replace it.' });
+  if (/event_name\s*[!=]=\s*['"]schedule['"]/.test(text)) flags.push({ message: "`github.event_name == 'schedule'` is false for dispatched runs; check for 'workflow_dispatch' too." });
+  if (markers.length) {
+    const gap = minIntervalMinutes(markers);
+    if (gap < floorMinutes) flags.push({ message: `These schedules run every ${gap} min; your plan allows every ${floorMinutes} min or slower.` });
+  }
+  return { markers, flags, suggestedDiff };
+}
