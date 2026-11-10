@@ -37,3 +37,14 @@ test('two servers migrating at once both succeed', async () => {
   const results = await Promise.all([migrate(db), migrate(db)]);
   expect(results.flat()).toEqual(['001_init.sql']);
 });
+
+test('a GitHub-style PKCS#1 App key can sign the App JWT', async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const { pkcs8 } = await import('../src/config.js');
+  const { App } = await import('@octokit/app');
+  const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
+  expect(pem).toContain('BEGIN RSA PRIVATE KEY');
+  const app = new App({ appId: 1, privateKey: pkcs8(pem) });
+  const { token } = (await app.octokit.auth({ type: 'app' })) as { token: string };
+  expect(token.split('.')).toHaveLength(3);
+});

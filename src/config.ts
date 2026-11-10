@@ -1,4 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { createPrivateKey } from 'node:crypto';
+
+/** GitHub hands out PKCS#1 ("BEGIN RSA PRIVATE KEY"); the JWT signer needs PKCS#8. */
+export const pkcs8 = (pem: string) => createPrivateKey(pem).export({ type: 'pkcs8', format: 'pem' }).toString();
 
 export class ConfigError extends Error {}
 
@@ -21,9 +25,9 @@ export function loadConfig() {
     appId: need('GITHUB_APP_ID'),
     appSlug: need('GITHUB_APP_SLUG'),
     // A file is the safe way on servers (systemd env files mangle \n); the one-line env var is for local runs.
-    privateKey: process.env.GITHUB_PRIVATE_KEY_FILE
+    privateKey: pkcs8(process.env.GITHUB_PRIVATE_KEY_FILE
       ? readFileSync(process.env.GITHUB_PRIVATE_KEY_FILE, 'utf8')
-      : need('GITHUB_PRIVATE_KEY').replace(/\\n/g, '\n'),
+      : need('GITHUB_PRIVATE_KEY').replace(/\\n/g, '\n')),
     webhookSecret: need('GITHUB_WEBHOOK_SECRET'),
     clientId: need('GITHUB_CLIENT_ID'),
     clientSecret: need('GITHUB_CLIENT_SECRET'),
