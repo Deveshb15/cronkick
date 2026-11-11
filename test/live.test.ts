@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { benchmarkSummary, latestRun, nextPlan, rowStatus } from '../web/lib/format.ts';
+import { latestRun, nextPlan, rowStatus } from '../web/lib/format.ts';
 import { countdown, fmtAge, gapAt, gapMarks, plural, tzAbbrev, viewerZone, fmtDelay, fmtDuration, humanCron, newIds } from '../web/lib/live.ts';
 
 test('plain-words cron for common shapes, raw cron otherwise', () => {
@@ -132,20 +132,3 @@ test('latest run: GitHub result apart from dispatch, never claims a run is going
   expect(latestRun([s({ state: 'pending', display: 'pending' })])).toBeNull();
 });
 
-test('benchmark: both probe cohorts in words, nothing when no repo contributes', () => {
-  const now = new Date('2026-11-10T12:00:00Z');
-  const stats = (p50Sec: number | null, missingShare: number, expected = 100) => ({ expected, ran: 90, missingShare, p50Sec, p95Sec: null });
-  const report = {
-    configured: 2, contributing: 2, checkedAt: new Date('2026-11-10T11:55:00Z'),
-    repos: [{ repo: 'p/a', private: false, live: true, from: new Date('2026-11-03T12:00:00Z'), until: now, expected: 100, ran: 90, lastSuccessAt: now, error: null, errorAt: null }],
-    schedules: [
-      { cron: '*/5 * * * *', repos: 2, stats: stats(156, 0.076), since: null },
-      { cron: '0 * * * *', repos: 2, stats: stats(534, 0.021), since: null },
-      { cron: '0 3 * * *', repos: 0, stats: stats(null, 0, 0), since: null },
-    ],
-  };
-  const b = benchmarkSummary(report as never, now)!;
-  expect(b.summary).toBe('every 5 minutes: median 2 min 36 s late, 7.6% never ran · every hour: median 8 min 54 s late, 2.1% never ran');
-  expect(b.sample).toMatch(/probe repo/);
-  expect(benchmarkSummary({ ...report, contributing: 0 } as never, now)).toBeNull();
-});

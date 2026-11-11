@@ -59,7 +59,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
                 </div>
               </div>
               <p className="mt-2 text-[13px]/5 text-zinc-400">Runs {humanCron(cron).toLowerCase()}, UTC. Already using <code className="font-mono">schedule:</code>? Remove it so GitHub doesn’t run it a second time, late.</p>
-              {candidates > 0 && <p className="mt-1 text-xs/5 text-zinc-400">Or move one of your {candidates} existing GitHub schedules: see “still run on GitHub’s schedule” below.</p>}
+              {candidates > 0 && <p className="mt-1 text-xs/5 text-zinc-400">Or move one of your {candidates} existing GitHub schedules: see “Still on GitHub’s schedule” below.</p>}
             </div>
           </li>
           <li className="flex gap-4">

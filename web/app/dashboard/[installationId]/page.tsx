@@ -13,11 +13,9 @@ import { AlertHint, Code, GapNotice, StatusKey, Ticks, VERDICT_DOT } from '@/com
 import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
 import { activity, dailyCells, knownZone, exceptions, installationsFor, overview, recentSlots, type DayCell, type SlotView, type WorkflowRow } from '@/lib/data';
-import { benchmarkSummary, manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
+import { manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
 import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 import { switchPlan } from '@/lib/switch';
-import { probeRepos } from '../../../../src/config.ts';
-import { probeReport } from '../../../../src/probe/collector.ts';
 import { PLANS } from '../../../../src/plans.ts';
 
 export const dynamic = 'force-dynamic';
@@ -73,8 +71,8 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const s = await requireInstallation(id, `/dashboard/${id}`);
   const inst = (await installationsFor(db, s.installs)).find((i) => i.id === id)!;
   const now = new Date();
-  const [{ repos, totals }, items, problems, report] = await Promise.all([
-    overview(db, id, now), activity(db, id, now, 8), exceptions(db, id, now), probeReport(db, probeRepos(), now).catch(() => null),
+  const [{ repos, totals }, items, problems] = await Promise.all([
+    overview(db, id, now), activity(db, id, now, 8), exceptions(db, id, now),
   ]);
   const limits = PLANS[inst.plan];
   const all = repos.flatMap((r) => r.workflows);
@@ -116,7 +114,6 @@ export default async function Overview({ params }: { params: Promise<{ installat
     .sort((a, b) => a.st.rank - b.st.rank)
     .map((x) => x.w);
   const rows = mode === 'rows' ? mine : mine.filter((w) => w.status !== 'active');
-  const bench = report ? benchmarkSummary(report) : null;
   const summary = c.due
     ? [`${c.onTime} of ${plural(c.due, 'run')} sent on time`, totals.medianDelayMs !== null && `median delay ${fmtDelay(totals.medianDelayMs)} over ${plural(c.onTime + c.late, 'sent run')}`,
       c.failed ? `${plural(c.failed, 'GitHub run')} failed` : c.passed ? 'no failed GitHub runs' : null, 'last 24 h'].filter(Boolean).join(' · ')
@@ -172,21 +169,6 @@ export default async function Overview({ params }: { params: Promise<{ installat
         </section>
 
         {switchSection}
-
-        {/* Context, not a claim: what GitHub's own scheduler did in our probe repos, collapsed below the user's own runs. */}
-        {bench && (
-          <details className="group rounded-xl text-[13px]/5 text-zinc-400 inset-ring inset-ring-white/10">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-x-2 px-4 py-2.5 [&::-webkit-details-marker]:hidden">
-              <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500 transition group-open:rotate-90" />
-              <span><span className="font-medium text-zinc-200">GitHub’s own <code className="font-mono">schedule:</code></span> in our probe repos · {bench.summary}</span>
-            </summary>
-            <div className="space-y-2 border-t border-white/5 px-4 py-3">
-              <p>This is the benchmark for what Cronkick replaces. It measures something different from your numbers above: from a <code className="font-mono">schedule:</code> time to GitHub creating the run, in public repos we run for this purpose. Your numbers measure from the scheduled time to GitHub accepting Cronkick’s request.</p>
-              <p>{bench.sample}</p>
-              <Link href="/lateness" className="inline-flex min-h-11 items-center font-medium text-white underline decoration-white/30 underline-offset-2 hover:decoration-white sm:min-h-0">See the full benchmark</Link>
-            </div>
-          </details>
-        )}
       </div>
       <DispatchToasts items={items} />
     </>

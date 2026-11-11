@@ -65,10 +65,11 @@ export function LiveRefresh({ installationId }: { installationId: number }) {
 
   const live = status === 'live';
   return (
-    <p className="flex items-center gap-x-2 text-xs/5 text-zinc-400" title={live ? 'New runs appear here as they happen' : 'Reconnecting to live updates'}>
-      {/* Connected to updates, not a health check: no pulse. */}
-      <span className={`inline-flex size-2 rounded-full ${live ? 'bg-zinc-400' : 'bg-zinc-600'}`} />
-      {live ? 'Updates connected' : status === 'connecting' ? 'Connecting…' : 'Reconnecting…'}
+    <p className="flex items-center gap-x-1.5 rounded-full py-0.5 pr-2.5 pl-2 text-xs/5 font-medium text-zinc-300 inset-ring inset-ring-white/10"
+      title={live ? 'This page updates on its own as runs happen' : 'Lost the connection for live updates; trying again'}>
+      {/* The page's connection, not the account's health: green only means new runs will show up without a reload. */}
+      <span aria-hidden="true" className={`size-1.5 rounded-full ${live ? 'bg-emerald-400' : status === 'connecting' ? 'bg-zinc-500' : 'bg-orange-400'}`} />
+      {live ? 'Live' : status === 'connecting' ? 'Connecting…' : 'Reconnecting…'}
     </p>
   );
 }

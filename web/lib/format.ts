@@ -1,6 +1,6 @@
 import type { ProbeReport } from '../../src/probe/collector.ts';
 import type { Counts24, SlotView, Verdict, WorkflowStatus } from './data.ts';
-import { fmtAge, fmtDuration, humanCron, plural } from './live.ts';
+import { fmtAge, fmtDuration, plural } from './live.ts';
 
 export const appSlug = () => process.env.GITHUB_APP_SLUG ?? 'cronkick';
 export const installUrl = () => `https://github.com/apps/${appSlug()}/installations/new`;
@@ -106,16 +106,3 @@ export function latestRun(slots: Pick<SlotView, 'state' | 'display' | 'conclusio
   return { due: s.due, text: words[s.display] ?? s.display, tone: s.display === 'unknown' ? 'quiet' : 'bad', runUrl: null };
 }
 
-/**
- * GitHub's own scheduler in our probe repos, in words: one cohort per probe schedule ("every 5 minutes: median 2 min
- * 35 s late, 7.6% never ran"). Null when no repo contributes, so nothing is shown rather than nothing measured.
- */
-export function benchmarkSummary(r: ProbeReport, now = new Date()): { summary: string; sample: string } | null {
-  const cohorts = r.schedules.filter((x) => x.stats.expected > 0 && x.stats.p50Sec !== null);
-  if (!cohorts.length || !r.contributing) return null;
-  const pct = (x: number) => `${(x * 100).toFixed(1).replace(/\.0$/, '')}%`;
-  return {
-    summary: cohorts.map((x) => `${humanCron(x.cron).toLowerCase()}: median ${fmtDuration(x.stats.p50Sec! * 1000)} late, ${pct(x.stats.missingShare)} never ran`).join(' · '),
-    sample: probeSample(r, now),
-  };
-}
