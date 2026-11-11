@@ -1,11 +1,10 @@
+<!-- The app icon reads on light and dark backgrounds, so it needs no <picture>: those follow the OS theme, not
+     GitHub's, and showed the white wordmark on GitHub's light theme. The name is real text, coloured by GitHub. -->
 <p align="center">
-  <a href="https://cronkick.xyz">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="brand/cronkick-lockup-on-dark.svg">
-      <img alt="Cronkick" src="brand/cronkick-lockup-on-light.svg" height="56">
-    </picture>
-  </a>
+  <a href="https://cronkick.xyz"><img alt="" src="brand/cronkick-app-icon.svg" width="72" height="72"></a>
 </p>
+
+<h1 align="center">Cronkick</h1>
 
 <p align="center"><strong>On-time cron for GitHub Actions.</strong><br>One comment in your workflow file, and your scheduled jobs start within seconds of their time.</p>
 
@@ -20,8 +19,6 @@
   <a href="https://github.com/Deveshb15/cronkick/actions/workflows/ci.yml"><img alt="CI/CD" src="https://github.com/Deveshb15/cronkick/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
-
----
 
 ## Why
 
@@ -56,7 +53,7 @@ Install the GitHub App from **[cronkick.xyz](https://cronkick.xyz)** and pick yo
 | Schedules | 10 | 50 |
 | Fastest schedule | every 15 min | every 5 min |
 | History | 7 days | 90 days |
-| Email alerts | | yes |
+| Email alerts | — | yes |
 
 Plans and prices: [cronkick.xyz/docs/plans](https://cronkick.xyz/docs/plans).
 
@@ -102,11 +99,11 @@ Copy [`.env.example`](.env.example) to `.env` and fill it in:
 
 ```bash
 npm ci
-npm run migrate                      # create or update the database schema (the worker also does this on start)
-npx next build web                   # build the web app (needs the env above)
+npm run migrate              # create or update the schema (the worker also does this on start)
+npx next build web           # build the web app (needs the env above)
 
-npm start                            # the worker: scheduler, webhooks, health check on :3001
-npx next start web -p 3000           # the web app on :3000; put HTTPS in front of this one
+npm start                    # the worker: scheduler, webhooks, health check on :3001
+npx next start web -p 3000   # the web app on :3000; put HTTPS in front of it
 ```
 
 The web app serves everything on one port and forwards `/webhooks` and `/healthz` to the worker. Run both processes under a supervisor; [`deploy/`](deploy/) has the systemd units and the release script we use. [`deploy/README.md`](deploy/README.md) walks through our production setup: two servers behind a load balancer, managed Postgres, and CI/CD over Tailscale. It's one way to do it, not a requirement.
