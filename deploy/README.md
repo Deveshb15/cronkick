@@ -138,7 +138,18 @@ Build and upload ─┘
 3. **Go live** runs one server at a time. It points `/opt/cronkick/current` at the new release, restarts both services and waits until the site serves that exact build. If the server doesn't come up healthy, it is switched back to the previous release and the second server is never touched.
 4. **Check cronkick.xyz** confirms the public site serves the release and `/healthz/dispatch` is ok.
 
-Each job opens SSH only for its own runner's IP (`deploy/ci-ssh.sh`), then closes it. Secrets live in the `production` environment, which only `main` can deploy to: `DIGITALOCEAN_TOKEN` (firewall read and update only), `DEPLOY_SSH_KEY` (its public key is in root's `authorized_keys` on both droplets, comment `cronkick-github-actions-deploy`), `SSH_KNOWN_HOSTS` and `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (the same value as in `/etc/cronkick/env`). Each server keeps the three newest releases.
+CI reaches the droplets over **Tailscale**, never the public internet: the firewall keeps SSH open only to your own IP. Each job joins the tailnet as a short-lived `tag:ci` machine, which removes itself when the job ends, and uses Tailscale SSH, so GitHub holds no SSH key. The tailnet policy lets `tag:ci` reach only `tag:cronkick` (the droplets), only on port 22, only as root. To cut CI off, revoke its OAuth client in the Tailscale admin page.
+
+Secrets live in the `production` environment, which only `main` can deploy to: `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET` (an OAuth client that can only create `tag:ci` keys), and `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (the same value as in `/etc/cronkick/env`). Each server keeps the three newest releases.
+
+Each droplet joined once with a `tag:cronkick` auth key:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --auth-key=<tag:cronkick key> --ssh --hostname=cronkick-1 --accept-dns=false   # cronkick-2 on the other
+```
+
+`--accept-dns=false` leaves the droplet's DNS alone, so the database host keeps resolving as before.
 
 **Without CI** (GitHub down, a hotfix from your laptop), run the same steps by hand:
 

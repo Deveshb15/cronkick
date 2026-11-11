@@ -11,8 +11,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  HOSTS: 167.172.252.36 64.225.7.86 # cronkick-1, cronkick-2
-  FIREWALL_ID: 7da5f45b-374e-4471-ae89-4debff78fbe4 # cronkick-fw
+  HOSTS: cronkick-1 cronkick-2 # Tailscale names; SSH to the droplets is only reachable over the tailnet
   RELEASE: ${{ github.run_number }}-${{ github.sha }}
 
 jobs:
@@ -53,10 +52,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
-    env: &ssh
-      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
-      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -73,16 +68,22 @@ jobs:
         run: deploy/release.sh build "$RELEASE"
         env:
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
-      - name: Open SSH for this runner
-        run: deploy/ci-ssh.sh open
+      - &tailnet
+        name: Join the tailnet (tag:ci may only SSH to the droplets)
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - &trust
+        # Tailscale SSH: the tailnet authenticates both ends, so there is no host key to pin in advance.
+        name: Trust the droplets on the tailnet
+        run: mkdir -p ~/.ssh && printf 'Host cronkick-*\n  StrictHostKeyChecking accept-new\n' >> ~/.ssh/config
       - name: Upload to both servers
         run: |
           pids=()
           for h in $HOSTS; do deploy/release.sh upload "$h" "$RELEASE" & pids+=($!); done
           for p in "${pids[@]}"; do wait "$p"; done
-      - name: Close SSH
-        if: always()
-        run: deploy/ci-ssh.sh close
 
   migrate:
     name: Migrate database
@@ -90,18 +91,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
-    env: *ssh
     steps:
       - uses: actions/checkout@v5
-      - name: Open SSH for this runner
-        run: deploy/ci-ssh.sh open
+      - *tailnet
+      - *trust
       - name: Apply new migrations
         run: |
           echo '### Migrations' >> "$GITHUB_STEP_SUMMARY"
           deploy/release.sh migrate "${HOSTS%% *}" "$RELEASE" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Close SSH
-        if: always()
-        run: deploy/ci-ssh.sh close
 
   # One server at a time, so the other keeps sending triggers. A server that doesn't come up healthy is
   # switched back to the previous release, and the next one is never touched.
@@ -114,21 +111,17 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          - { name: cronkick-1, host: 167.172.252.36 }
-          - { name: cronkick-2, host: 64.225.7.86 }
+          - { name: cronkick-1 }
+          - { name: cronkick-2 }
     environment:
       name: production
       url: https://cronkick.xyz
-    env: *ssh
     steps:
       - uses: actions/checkout@v5
-      - name: Open SSH for this runner
-        run: deploy/ci-ssh.sh open
+      - *tailnet
+      - *trust
       - name: Switch, restart and wait until healthy
-        run: deploy/release.sh live "${{ matrix.host }}" "$RELEASE"
-      - name: Close SSH
-        if: always()
-        run: deploy/ci-ssh.sh close
+        run: deploy/release.sh live "${{ matrix.name }}" "$RELEASE"
 
   verify:
     name: Check cronkick.xyz
