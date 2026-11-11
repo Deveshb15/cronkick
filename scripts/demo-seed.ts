@@ -125,10 +125,19 @@ await account(3, 'initech', 'free', ago(20 * 60_000), [[301, 'api']], initech);
 for (const p of planSlots(3001, [{ cron: '30 3 * * *', tz: 'Europe/Berlin' }], now, new Date(now.getTime() + 2 * H))) await insertSlot(3, initech[0], p, { state: 'pending' });
 
 // 4. umbrella (Pro): a quiet account whose only news is the outage.
-const umbrella: Wf[] = [{ id: 4001, repo: 401, path: '.github/workflows/poll.yml', name: 'Poll vendors', crons: [['*/10 * * * *']] }];
+const umbrella: Wf[] = [
+  { id: 4001, repo: 401, path: '.github/workflows/poll.yml', name: 'Poll vendors', crons: [['*/10 * * * *']] },
+  { id: 4002, repo: 401, path: '.github/workflows/report.yml', name: 'Morning report', crons: [['0 6 * * *', 'Europe/London']] },
+];
 await account(4, 'umbrella', 'pro', ago(30 * 24 * H), [[401, 'ops']], umbrella);
 await history(4, umbrella[0], ago(2 * 24 * H), () => ({}));
+await history(4, umbrella[1], ago(20 * 24 * H), () => ({}));
 await db.query('INSERT INTO coverage_gaps (started_at, ended_at, detected_at) VALUES ($1, $2, $2)', [gap.from, gap.to]);
+
+// 5. solo (Free): one schedule, a month of quiet, healthy history. The case a new paying user sees most.
+const solo: Wf[] = [{ id: 5001, repo: 501, path: '.github/workflows/sync.yml', name: 'Sync orders', crons: [['*/15 * * * *']] }];
+await account(5, 'solo', 'free', ago(26 * 24 * H), [[501, 'side-project']], solo);
+await history(5, solo[0], ago(26 * 24 * H), (_, i) => (i === 1300 ? { delayS: 36 } : i % 400 === 77 ? { conclusion: 'failure', runS: 18 } : {}));
 
 // The planner is healthy, so /healthz/dispatch reads ok.
 await db.query('UPDATE planner SET planned_until = $1', [new Date(now.getTime() + 2 * H)]);
@@ -148,7 +157,7 @@ for (const repo of probes) {
   await db.query('INSERT INTO probe_health (repo, private, last_attempt_at, last_success_at) VALUES ($1, false, $2, $2)', [repo, ago(3 * 60_000)]);
 }
 
-console.log(`Seeded ${(await db.query('SELECT count(*) FROM slots')).rows[0].count} slots across 4 accounts, ${run - 1} probe runs.`);
-console.log('Accounts: 1 acme (Pro, healthy with incidents), 2 globex (Free, needs a fix), 3 initech (new), 4 umbrella (Pro, outage window).');
+console.log(`Seeded ${(await db.query('SELECT count(*) FROM slots')).rows[0].count} slots across 5 accounts, ${run - 1} probe runs.`);
+console.log('Accounts: 1 acme (Pro, healthy with incidents), 2 globex (Free, needs a fix), 3 initech (new), 4 umbrella (Pro, two schedules, outage window), 5 solo (Free, one schedule).');
 console.log(`Probe repos for /lateness: PROBE_REPOS=${probes.join(',')}`);
 await db.end();

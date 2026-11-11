@@ -50,6 +50,11 @@
 /* A Cronkick coverage gap between two runs: a hatched divider, not a run. */
 .tick-gap { flex: 0 0 0; margin-inline: 3px; border-left: 1px dashed rgb(255 255 255 / 0.55); }
 .tick-selected { outline: 2px solid white; outline-offset: 1px; }
+/* Daily cells (web/components/daily-cells.tsx): a day with nothing due is an outline; before tracking, a faint fill;
+   a coverage gap is a dashed left edge, never a colour (it isn't a run). */
+.day-empty { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
+.day-none { background: rgb(255 255 255 / 0.04); }
+.day-gap { border-left: 2px dashed rgb(255 255 255 / 0.7); }
 @media (forced-colors: active) {
   .tick { border: 1px solid CanvasText; }
   .tick-selected { outline-color: Highlight; }

@@ -100,7 +100,7 @@ export function SlotPill({ state, retrying }: { state: SlotDisplay; retrying?: b
   return <Pill tone={SLOT_TONE[state] ?? 'zinc'} icon={SLOT_ICON[state] ?? ClockIcon} title={slotHelp(state, retrying)}>{SLOT_LABEL[state] ?? state}</Pill>;
 }
 export const LatePill = () => <Pill tone="orange" icon={ClockIcon} title="Sent more than 30 s after its scheduled time.">Late</Pill>;
-export const JobFailedPill = () => <Pill tone="red" icon={XCircleIcon} title="GitHub ran the job and it failed.">Job failed</Pill>;
+export const JobFailedPill = () => <Pill tone="red" icon={XCircleIcon} title="GitHub ran the workflow and it failed.">Run failed</Pill>;
 
 /** A dot and a word, for routine states. */
 export function StatusDot({ dot, children, className = '' }: { dot: string; children: ReactNode; className?: string }) {
@@ -187,7 +187,7 @@ export function StatusKey() {
             </div>
           ))}
         </dl>
-        <p className="mt-3 text-[13px]/5 text-zinc-400">The job’s own result (passed or failed) comes from GitHub and is shown separately in the history.</p>
+        <p className="mt-3 text-[13px]/5 text-zinc-400">The GitHub run’s own result (passed or failed) comes from GitHub and is shown separately in the history.</p>
       </div>
     </>
   );

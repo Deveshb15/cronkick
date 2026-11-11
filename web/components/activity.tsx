@@ -20,7 +20,7 @@ const detail = (i: ExceptionItem) => ({
   overdue: i.retrying ? 'GitHub returned errors; retrying' : 'not sent yet',
   missed: i.display === 'rejected' ? 'GitHub refused the trigger' : 'not sent before its deadline',
   unconfirmed: 'sent, but GitHub didn’t confirm it',
-  failed: 'the job failed on GitHub',
+  failed: 'the GitHub run failed',
   late: `sent ${fmtDelay(i.sendDelayMs)}`,
 }[i.reason]);
 

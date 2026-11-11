@@ -12,6 +12,14 @@ export function LiveRefresh({ installationId }: { installationId: number }) {
   const router = useRouter();
   const [status, setStatus] = useState<Status>('connecting');
 
+  // Tell the server the viewer's time zone, so daily cells are the viewer's days. Refresh once when it changes.
+  useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!tz || document.cookie.split('; ').includes(`tz=${tz}`)) return;
+    document.cookie = `tz=${tz}; path=/; max-age=31536000; samesite=lax`;
+    router.refresh();
+  }, [router]);
+
   useEffect(() => {
     let es: EventSource | null = null;
     let stale = false;

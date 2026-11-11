@@ -31,6 +31,8 @@ export function toTick(display: SlotDisplay, sendDelayMs: number | null): Tick {
 export type SlotView = {
   id: number; workflowId: number; due: string; state: string; display: SlotDisplay; tick: Tick; attempts: number; retrying: boolean;
   sendDelayMs: number | null; triedDelayMs: number | null; runUrl: string | null; conclusion: string | null;
+  /** GitHub run start to completion, when GitHub reported both. */
+  runMs: number | null;
 };
 const since = (t: Date | null, due: Date) => (t ? new Date(t).getTime() - due.getTime() : null);
 const slotView = (r: any, now: Date): SlotView => {
@@ -40,19 +42,31 @@ const slotView = (r: any, now: Date): SlotView => {
   return {
     id: Number(r.id), workflowId: Number(r.workflow_id), due: due.toISOString(), state: r.state, display, tick: toTick(display, sendDelayMs),
     attempts: Number(r.attempts ?? 0), retrying: display === 'overdue' && r.response_status != null, sendDelayMs, triedDelayMs: since(r.first_attempt_at, due), runUrl: r.run_url, conclusion: r.conclusion,
+    runMs: r.run_started_at && r.run_completed_at ? Math.max(0, new Date(r.run_completed_at).getTime() - new Date(r.run_started_at).getTime()) : null,
   };
 };
 
-/** The last `n` due slots of every workflow in an installation, oldest first. No padding: the strip draws the empty span. */
-export async function recentSlots(db: pg.Pool, installationId: number, now: Date, n = 48): Promise<Map<number, SlotView[]>> {
+/** The oldest due time a plan may show: Free 7 days, Pro 90 (history is pruned at 91). */
+export async function retainedFrom(db: pg.Pool, installationId: number, now: Date): Promise<Date> {
+  const plan = ((await db.query('SELECT plan FROM installations WHERE id = $1', [installationId])).rows[0]?.plan ?? 'free') as PlanName;
+  return new Date(now.getTime() - (PLANS[plan].historyDays ?? 91) * DAY_MS);
+}
+
+/**
+ * The last `n` due slots of every workflow in an installation (or just `workflowId`), oldest first, never older than
+ * the plan shows. No padding: the strip draws the empty span.
+ */
+export async function recentSlots(db: pg.Pool, installationId: number, now: Date, n = 48, workflowId?: number): Promise<Map<number, SlotView[]>> {
+  const floor = await retainedFrom(db, installationId, now);
   const { rows } = await db.query(
     // Per workflow via the (workflow_id, due_at) index: reads ~n rows each, not the account's whole history.
-    `SELECT s.id, s.workflow_id, s.due_at, s.state, s.run_url, s.conclusion, s.fired_at, s.first_attempt_at, s.attempts, s.response_status
+    `SELECT s.id, s.workflow_id, s.due_at, s.state, s.run_url, s.conclusion, s.fired_at, s.first_attempt_at, s.attempts, s.response_status,
+            s.run_started_at, s.run_completed_at
        FROM workflows w JOIN repos r ON r.id = w.repo_id
-       CROSS JOIN LATERAL (SELECT * FROM slots WHERE workflow_id = w.id AND due_at <= $2 ORDER BY due_at DESC LIMIT $3) s
-      WHERE r.installation_id = $1 AND s.installation_id = $1
+       CROSS JOIN LATERAL (SELECT * FROM slots WHERE workflow_id = w.id AND due_at <= $2 AND due_at > $4 ORDER BY due_at DESC LIMIT $3) s
+      WHERE r.installation_id = $1 AND s.installation_id = $1 AND ($5::bigint IS NULL OR w.id = $5)
       ORDER BY s.workflow_id, s.due_at`,
-    [installationId, now, n],
+    [installationId, now, n, floor, workflowId ?? null],
   );
   const out = new Map<number, SlotView[]>();
   for (const r of rows) out.set(Number(r.workflow_id), [...(out.get(Number(r.workflow_id)) ?? []), slotView(r, now)]);
@@ -114,6 +128,8 @@ export const healthOf = (c: Counts24): Health => (
 export type WorkflowRow = {
   id: number; repo: string; name: string; path: string; flags: Flag[]; suggested_diff: string | null; schedules: Schedule[];
   status: WorkflowStatus; c24: Counts24; health: WorkflowHealth; nextDue: string | null; dismissed: boolean;
+  /** The next five due times when the workflow will be sent; empty otherwise. */
+  upcoming: string[];
 };
 export type RepoRow = { id: number; full_name: string; default_branch: string; workflows: WorkflowRow[] };
 /** `quiet`: live schedules and earlier runs, but nothing came due in the last 24 h (a weekly job on its off days). */
@@ -140,6 +156,17 @@ async function installCounts(db: pg.Pool, ids: number[], now: Date): Promise<Map
   return new Map(rows.map((r) => [Number(r.id), counts(r)]));
 }
 
+/**
+ * The next `n` due times of a workflow's active schedules, each strictly after the last, through the same rules the
+ * planner uses (DST, merged crons). Empty when nothing is active.
+ */
+export function nextRuns(schedules: Schedule[], from: Date, n = 5): string[] {
+  const active = schedules.filter((s) => s.status === 'active');
+  const out: string[] = [];
+  for (let t: Date | null = from; out.length < n && (t = nextDue(active, t)); ) out.push(t.toISOString());
+  return out;
+}
+
 /** The planner's eligibility rule (see materialize): only these schedules will be sent, so only they get a next due time. */
 const nextFor = (schedules: Schedule[], eligible: boolean, now: Date): string | null => {
   const t = eligible ? nextDue(schedules.filter((s) => s.status === 'active'), now) : null;
@@ -149,14 +176,17 @@ const nextFor = (schedules: Schedule[], eligible: boolean, now: Date): string | 
 /** A stretch Cronkick's planner wasn't running: runs due then may not have been sent, and some may have been. */
 export type CoverageGap = { start: string; end: string };
 
-/** Coverage gaps overlapping (from, to], oldest first. Pass an installation's `created_at` as `from` at the latest: older gaps aren't its. */
-export async function coverageGaps(db: pg.Pool, from: Date, to: Date): Promise<CoverageGap[]> {
+const later = (a: Date, b: Date | null | undefined) => (b && b > a ? b : a);
+/**
+ * Coverage gaps overlapping (from, to], oldest first. `since` is the installation's `created_at`: a gap that began
+ * before it starts there for this account, which didn't exist earlier.
+ */
+export async function coverageGaps(db: pg.Pool, from: Date, to: Date, since?: Date | null): Promise<CoverageGap[]> {
   const { rows } = await db.query(
     'SELECT started_at, ended_at FROM coverage_gaps WHERE started_at < $2 AND ended_at > $1 ORDER BY started_at', [from, to]);
-  return rows.map((r) => ({ start: new Date(r.started_at).toISOString(), end: new Date(r.ended_at).toISOString() }));
+  return rows.map((r) => ({ start: later(new Date(r.started_at), since).toISOString(), end: new Date(r.ended_at).toISOString() }));
 }
 const DAY_MS = 24 * 60 * 60_000;
-const later = (a: Date, b: Date | null | undefined) => (b && b > a ? b : a);
 
 export type NextKick = { due: string; workflowId: number; workflow: string; repo: string; alsoDue: number } | null;
 
@@ -190,7 +220,7 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
     installCounts(db, [installationId], now),
     // Has anything ever come due? Until then the overview is the setup guide.
     db.query(`SELECT EXISTS (SELECT 1 FROM slots WHERE installation_id = $1 AND due_at <= $2 AND state <> 'skipped') AS any`, [installationId, now]),
-    coverageGaps(db, later(new Date(now.getTime() - DAY_MS), inst?.created_at), now),
+    coverageGaps(db, later(new Date(now.getTime() - DAY_MS), inst?.created_at), now, inst?.created_at),
   ]);
   const stats = new Map(perWf.rows.map((r) => [Number(r.workflow_id), counts(r)]));
 
@@ -204,6 +234,7 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
     repo.workflows.push({
       id: Number(w.id), repo: repo.full_name, name: w.name, path: w.path, flags: w.flags, suggested_diff: w.suggested_diff, schedules: w.schedules,
       status, c24, health: workflowHealth(status === 'needs_fix', c24), nextDue: nextFor(w.schedules, sending && status === 'active', now), dismissed: w.dismissed,
+      upcoming: sending && status === 'active' ? nextRuns(w.schedules, now) : [],
     });
   }
 
@@ -253,6 +284,60 @@ export async function activity(db: pg.Pool, installationId: number, now: Date, l
     [installationId, now, limit],
   );
   return rows.map((r) => ({ ...slotView(r, now), workflow: r.workflow, repo: r.repo }));
+}
+
+// Only names Postgres knows are kept, so the cache stays within its few hundred zones whatever cookies arrive.
+const zones = new Set<string>();
+/** `name` if Postgres knows it as a time zone (cached), else UTC: a name the browser accepts can still be unknown here. */
+export async function knownZone(db: pg.Pool, name: string): Promise<string> {
+  if (!zones.has(name) && (await db.query('SELECT 1 FROM pg_timezone_names WHERE name = $1', [name])).rowCount === 1) zones.add(name);
+  return zones.has(name) ? name : 'UTC';
+}
+
+/** One calendar day of one workflow, in the viewer's zone. `state` is the worst dispatch outcome that day. */
+export type DayCell = {
+  day: string; start: string; end: string; today: boolean;
+  state: 'overdue' | 'missed' | 'unconfirmed' | 'late' | 'waiting' | 'ontime' | 'empty' | 'none';
+  c: Counts24; gap: boolean;
+};
+// A run being sent right now lasts seconds; it colours the day only when nothing else has happened that day.
+const worstOf = (c: Counts24): DayCell['state'] =>
+  c.overdue ? 'overdue' : c.refused + c.gaveUp ? 'missed' : c.unconfirmed ? 'unconfirmed' : c.late ? 'late' : c.due > c.waiting ? 'ontime' : c.waiting ? 'waiting' : 'empty';
+
+/**
+ * The last `days` calendar days (today included, so far) per workflow, in time zone `tz` (validated by the caller),
+ * oldest first. Counts are dispatch outcomes plus GitHub results; a coverage gap marks the days it touches but adds no
+ * runs. Days before a workflow's first record are `none`, so an empty past never reads as "nothing was due".
+ */
+export async function dailyCells(db: pg.Pool, installationId: number, workflowIds: number[], now: Date, tz: string, days: number): Promise<Map<number, DayCell[]>> {
+  const span = (await db.query(
+    `SELECT to_char(d, 'YYYY-MM-DD') AS day, d AT TIME ZONE $2 AS start_at, (d + interval '1 day') AT TIME ZONE $2 AS end_at
+       FROM generate_series(date_trunc('day', $1::timestamptz AT TIME ZONE $2) - ($3::int - 1) * interval '1 day',
+                            date_trunc('day', $1::timestamptz AT TIME ZONE $2), interval '1 day') d`,
+    [now, tz, days],
+  )).rows.map((r) => ({ day: r.day as string, start: new Date(r.start_at), end: new Date(r.end_at) }));
+  const from = span[0].start;
+  const [agg, first, gaps] = await Promise.all([
+    db.query(
+      `SELECT workflow_id, to_char(due_at AT TIME ZONE $4, 'YYYY-MM-DD') AS day, ${COUNTS_SQL}
+         FROM slots WHERE installation_id = $1 AND workflow_id = ANY($3) AND due_at <= $2 AND due_at >= $5
+        GROUP BY 1, 2`,
+      [installationId, now, workflowIds, tz, from],
+    ),
+    db.query('SELECT workflow_id, min(due_at) AS first FROM slots WHERE installation_id = $1 AND workflow_id = ANY($2) GROUP BY 1', [installationId, workflowIds]),
+    db.query('SELECT created_at FROM installations WHERE id = $1', [installationId]).then((r) => coverageGaps(db, later(from, r.rows[0]?.created_at), now, r.rows[0]?.created_at)),
+  ]);
+  const byKey = new Map(agg.rows.map((r) => [`${r.workflow_id}:${r.day}`, counts(r)]));
+  const firstOf = new Map(first.rows.map((r) => [Number(r.workflow_id), new Date(r.first)]));
+  return new Map(workflowIds.map((id) => [id, span.map((d, i) => {
+    const c = byKey.get(`${id}:${d.day}`) ?? counts(null);
+    const before = !c.due && (!firstOf.has(id) || d.end <= firstOf.get(id)!);
+    return {
+      day: d.day, start: d.start.toISOString(), end: d.end.toISOString(), today: i === span.length - 1,
+      state: before ? 'none' : worstOf(c), c,
+      gap: gaps.some((g) => Date.parse(g.start) < d.end.getTime() && Date.parse(g.end) > d.start.getTime()),
+    };
+  })]));
 }
 
 /** Why a due slot needs attention, most serious first. */
@@ -319,7 +404,8 @@ const FILTERS: Record<HistoryFilter, string> = {
  * Pages of MAX_ROWS, newest first. `before` pages back (rows due strictly before it), `after` pages forward (strictly
  * after it); both stay within the plan's window. `hasOlder` / `hasNewer` say whether there is more either way.
  */
-export async function workflowHistory(db: pg.Pool, installationId: number, workflowId: number, now: Date, filter?: HistoryFilter, before?: Date, after?: Date) {
+export async function workflowHistory(db: pg.Pool, installationId: number, workflowId: number, now: Date, filter?: HistoryFilter, before?: Date, after?: Date,
+  bounds?: { from: Date; until: Date }) {
   const w = (await db.query(
     `SELECT w.id, w.name, w.path, w.present, w.flags, w.suggested_diff, r.full_name, r.default_branch, r.active AS repo_active, i.suspended, i.removed, i.alert_email, i.created_at,
             coalesce((SELECT json_agg(json_build_object('cron', s.cron, 'tz', s.tz, 'status', s.status) ORDER BY s.id) FROM schedules s WHERE s.workflow_id = w.id), '[]') AS schedules
@@ -329,9 +415,12 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
   if (!w) return null;
   const plan = (await db.query('SELECT plan FROM installations WHERE id = $1', [installationId])).rows[0]?.plan as PlanName;
   const limits = PLANS[plan ?? 'free'];
-  const window = limits.historyRows
+  // One calendar day, when asked (`bounds` from dayBounds: Dates, so the ISO text is safe to inline). It narrows the
+  // rows, the filter counts and the paging edges alike, so an empty day is an empty page, never older runs.
+  const oneDay = bounds ? ` AND due_at >= '${bounds.from.toISOString()}'::timestamptz AND due_at < '${bounds.until.toISOString()}'::timestamptz` : '';
+  const window = (limits.historyRows
     ? `id IN (SELECT id FROM slots WHERE workflow_id = $1 AND due_at <= $2 ORDER BY due_at DESC LIMIT ${limits.historyRows})`
-    : `workflow_id = $1 AND due_at <= $2 AND due_at > $2::timestamptz - interval '${limits.historyDays} days'`;
+    : `workflow_id = $1 AND due_at <= $2 AND due_at > $2::timestamptz - interval '${limits.historyDays} days'`) + oneDay;
   const where = filter && FILTERS[filter] ? `${window} AND ${FILTERS[filter]}` : window;
   // The shown range; history is pruned at 91 days, so that bounds a plan without a day limit.
   const oldest = new Date(now.getTime() - (limits.historyDays ?? 91) * DAY_MS);
@@ -354,7 +443,7 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
     db.query(`SELECT ${COUNTS_SQL}, percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM fired_at - due_at) * 1000)
                        FILTER (WHERE state IN ('fired', 'accepted') AND fired_at IS NOT NULL) AS median
                 FROM slots WHERE workflow_id = $1 AND due_at > $2::timestamptz - interval '24 hours' AND due_at <= $2`, [workflowId, now]),
-    coverageGaps(db, later(oldest, w.created_at), now),
+    coverageGaps(db, later(oldest, w.created_at), now, w.created_at),
   ]);
   const c24 = counts(day.rows[0]);
   // Forward pages are read oldest first; keep the MAX_ROWS just after the cursor and show them newest first.
@@ -387,6 +476,42 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
     plan,
     gaps,
   };
+}
+
+/** A `YYYY-MM-DD` day in time zone `tz` as [from, until); null when the text isn't a real date. */
+export async function dayBounds(db: pg.Pool, day: string | undefined, tz: string): Promise<{ from: Date; until: Date } | null> {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`)) || new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day) return null;
+  const r = (await db.query(`SELECT ($1::date)::timestamp AT TIME ZONE $2 AS f, ($1::date + 1)::timestamp AT TIME ZONE $2 AS u`, [day, tz])).rows[0];
+  return { from: new Date(r.f), until: new Date(r.u) };
+}
+
+export const RANGES = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 } as const;
+export type Range = keyof typeof RANGES;
+/** The ranges a plan can look at: Free sees its 7 days, Pro up to 90. */
+export const rangesFor = (plan: PlanName): Range[] => (plan === 'pro' ? ['24h', '7d', '30d', '90d'] : ['24h', '7d']);
+
+/**
+ * One workflow over (from, now]: dispatch counts, the send delay of what GitHub accepted (p50, p95 and how many), and
+ * that delay in 60 half-second bins from 0 to 30 s (exactly 30 s counts as on time, in the last bin), with anything
+ * later counted apart along with the worst. Counts, not rows, however long the range.
+ */
+export async function rangeStats(db: pg.Pool, workflowId: number, now: Date, from: Date) {
+  const sent = `(SELECT *, CASE WHEN state IN ('fired', 'accepted') AND fired_at IS NOT NULL THEN extract(epoch FROM fired_at - due_at) * 1000 END AS d
+                   FROM slots WHERE workflow_id = $1 AND due_at <= $2 AND due_at > $3) x`;
+  const [facts, bins] = await Promise.all([
+    db.query(`SELECT ${COUNTS_SQL}, count(d)::int AS n, percentile_cont(0.5) WITHIN GROUP (ORDER BY d) AS p50, percentile_cont(0.95) WITHIN GROUP (ORDER BY d) AS p95,
+                     count(*) FILTER (WHERE d > 30000)::int AS over, max(d) AS max,
+                     count(*) FILTER (WHERE conclusion IN ('neutral', 'skipped'))::int AS other,
+                     count(*) FILTER (WHERE state IN ('fired', 'accepted') AND conclusion IS NULL)::int AS unreported,
+                     coalesce(bool_or(extract(minute FROM due_at AT TIME ZONE 'UTC') = 0), false) AS top FROM ${sent}`, [workflowId, now, from]),
+    db.query(`SELECT least(60, greatest(1, floor(d / 500)::int + 1)) AS b, count(*)::int AS n FROM ${sent} WHERE d <= 30000 GROUP BY 1`, [workflowId, now, from]),
+  ]);
+  const f = facts.rows[0];
+  const hist = Array<number>(60).fill(0);
+  for (const r of bins.rows) hist[r.b - 1] = r.n;
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  return { c: counts(f), n: f.n as number, p50: num(f.p50), p95: num(f.p95), over: f.over as number, max: num(f.max), bins: hist,
+    other: f.other as number, unreported: f.unreported as number, topOfHour: f.top as boolean };
 }
 
 /** Hide (or show again) a workflow in the "still on GitHub's schedule" list. Only within this installation. */

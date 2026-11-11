@@ -1,20 +1,16 @@
 'use client';
 import { CheckIcon } from '@heroicons/react/16/solid';
-import Link from 'next/link';
 import { useState } from 'react';
 import { humanCron } from '@/lib/live';
-import { Countdown, Time } from './live';
 import { AlertHint, ButtonLink } from './ui';
 
-type Found = { workflowId: number; workflow: string; repo: string; due: string; cadence: string } | null;
-
 /**
- * Setup until a slot first comes due: pick a cadence, copy one line, push. Step 3 watches live and flips to the
- * configured schedule (with its first due time) as soon as Cronkick sees the push, without a reload.
- * With no repositories selected, the page points at choosing them first.
+ * Setup until a schedule is configured: pick a cadence, copy one line, push. The page watches live; once Cronkick
+ * sees the push the overview takes over, with the new schedule awaiting its first run. With no repositories
+ * selected, the page points at choosing them first.
  */
-export function FirstRun({ installationId, repos, manageUrl, floor, found, candidates, alerts }: {
-  installationId: number; repos: string[]; manageUrl: string; floor: number; found: Found; candidates: number; alerts: boolean;
+export function FirstRun({ installationId, repos, manageUrl, floor, candidates, alerts }: {
+  installationId: number; repos: string[]; manageUrl: string; floor: number; candidates: number; alerts: boolean;
 }) {
   const presets = [
     { cron: `*/${Math.max(15, floor)} * * * *`, label: `Every ${Math.max(15, floor)} min` },
@@ -37,7 +33,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, found, candi
             </div>
           </li>
           <li className="flex gap-4">
-            {found ? done : step(2, repos.length > 0)}
+            {step(2, repos.length > 0)}
             <div className="min-w-0 flex-1">
               <p className="font-medium">Add one line to a workflow</p>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs/5">
@@ -50,7 +46,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, found, candi
               <div className="mt-3 overflow-hidden rounded-xl bg-zinc-950 inset-ring inset-ring-white/10">
                 <div className="flex flex-wrap items-center gap-2 border-b border-white/5 px-4 py-2 font-mono text-xs/5 text-zinc-400">
                   <span>.github/workflows/your-workflow.yml</span>
-                  <span className="ml-auto flex items-center gap-2">{found ? <><span className="size-2 rounded-full bg-emerald-400" />synced</> : <><span className="size-2 animate-pulse rounded-full bg-brand-500" />waiting for push</>}</span>
+                  <span className="ml-auto flex items-center gap-2"><span className="size-2 animate-pulse rounded-full bg-brand-500" />waiting for push</span>
                   <button type="button" onClick={copy} className="rounded-md bg-brand-500 px-2.5 py-1 font-sans text-xs/5 font-semibold text-ink transition hover:bg-brand-400">{copied ? 'Copied ✓' : 'Copy line'}</button>
                 </div>
                 <div className="py-3 font-mono text-[0.8125rem]/7 whitespace-pre text-zinc-300">
@@ -67,15 +63,10 @@ export function FirstRun({ installationId, repos, manageUrl, floor, found, candi
             </div>
           </li>
           <li className="flex gap-4">
-            {found ? done : step(3, false)}
+            {step(3, false)}
             <div className="min-w-0 flex-1">
               <p className="font-medium">Push it to your default branch</p>
-              {found ? (
-                <div className="mt-3 flex animate-pop flex-wrap items-center gap-3 rounded-xl bg-emerald-400/[0.06] px-4 py-3 text-sm/6 inset-ring inset-ring-emerald-400/25">
-                  <span>Configured <b className="font-medium">{found.workflow}</b> in {found.repo.split('/')[1]}. First run <Time iso={found.due} className="font-mono text-brand-400" /> <span className="text-zinc-400">({found.due.slice(0, 16).replace('T', ' ')} UTC)</span></span>
-                  <Link href={`/dashboard/${installationId}/workflows/${found.workflowId}`} className="ml-auto text-xs/5 font-medium text-brand-400 hover:text-brand-300">View schedule →</Link>
-                </div>
-              ) : !repos.length ? (
+              {!repos.length ? (
                 <p className="mt-3 text-sm/6 text-zinc-400">Choose repositories first; Cronkick watches them for the push.</p>
               ) : (
                 <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-3 text-sm/6 text-zinc-400 inset-ring inset-ring-white/10">
@@ -91,23 +82,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, found, candi
     <section className="mx-auto max-w-6xl px-4 pt-8 pb-16 sm:px-6 sm:pt-10 lg:px-10">
       <div className="max-w-3xl">
         <p className="text-[13px]/5 text-zinc-400">Overview</p>
-        {found ? (
-          <>
-            {/* Configured, nothing due yet: confirm what will happen and when, instead of repeating the setup steps. */}
-            <h1 className="mt-1 text-2xl/8 font-semibold tracking-tight">Your first schedule is ready</h1>
-            <div className="mt-6 rounded-xl p-5 inset-ring inset-ring-emerald-400/25">
-              <p className="flex items-center gap-x-2 text-sm/6 font-medium"><span aria-hidden="true" className="size-2 rounded-full bg-emerald-400" />{found.workflow} <span className="font-normal text-zinc-400">· {found.repo.split('/')[1]}</span></p>
-              <p className="mt-1 text-sm/6 text-zinc-300">{found.cadence}</p>
-              <p className="text-sm/6 text-zinc-300">First run <Time iso={found.due} zone className="font-medium text-white" /> · <Countdown to={found.due} /></p>
-              <p className="mt-1 text-[13px]/5 text-zinc-400">Nothing else to do. This page becomes the overview after the first run.</p>
-              <ButtonLink href={`/dashboard/${installationId}/workflows/${found.workflowId}`} className="mt-4">View schedule</ButtonLink>
-            </div>
-            <details className="group mt-10">
-              <summary className="cursor-pointer text-sm/6 font-medium text-zinc-300 hover:text-white">Add another schedule</summary>
-              {steps}
-            </details>
-          </>
-        ) : repos.length ? (
+        {repos.length ? (
           <>
             <h1 className="mt-1 text-2xl/8 font-semibold tracking-tight">Schedule your first workflow</h1>
             <p className="mt-2 text-sm/6 text-zinc-400">Three steps. This page updates on its own as you go.</p>
