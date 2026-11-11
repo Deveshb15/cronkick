@@ -10,6 +10,8 @@ export function resendMailer(apiKey: string, from: string): Mailer {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify({ from, to, subject, text }),
+        // Alerts are sent from the planning loop; a hung request must not stall planning. A timeout throws, so the alert is retried.
+        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
     },

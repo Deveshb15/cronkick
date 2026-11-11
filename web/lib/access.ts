@@ -15,3 +15,8 @@ export async function requireInstallation(id: number, path: string) {
   }
   return s;
 }
+
+/** For page titles: may this user see the installation? No redirect; the page itself does that. */
+export async function canSee(id: number): Promise<boolean> {
+  return !!(await getSession())?.installs.includes(id);
+}

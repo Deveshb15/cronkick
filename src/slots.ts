@@ -5,19 +5,31 @@ type Sched = { cron: string; tz: string };
 export const DEADLINE_MS = 5 * 60_000;
 const MAX_JITTER_S = 15;
 
+// Longer than any clock change. An iterator started inside a repeated (fall-back) hour emits that
+// hour's times again, so every pass starts this far back and keeps only instants after `from`.
+const STABLE_START_MS = 3 * 60 * 60_000;
+
 /** Due instants (ms) of all schedules merged, after `from`, up to and including `count` items or `until`. */
 function merged(scheds: Sched[], from: Date, opts: { until?: Date; count?: number }): number[] {
   const out = new Set<number>();
   for (const s of scheds) {
-    const it = CronExpressionParser.parse(s.cron, { tz: s.tz, currentDate: from });
-    for (let i = 0; i < (opts.count ?? 100_000); i++) {
+    const it = CronExpressionParser.parse(s.cron, { tz: s.tz, currentDate: new Date(from.getTime() - STABLE_START_MS) });
+    for (let i = 0; i < (opts.count ?? 100_000); ) {
       const t = it.next().getTime();
+      if (t <= from.getTime()) continue;
+      i++;
       out.add(t);
       if (opts.until && t > opts.until.getTime()) break; // keep one past `until` for deadlines
     }
   }
   const sorted = [...out].sort((a, b) => a - b);
   return opts.count ? sorted.slice(0, opts.count) : sorted;
+}
+
+/** The next due instant across schedules, strictly after `from`; null when there are none. */
+export function nextDue(scheds: Sched[], from: Date): Date | null {
+  const [t] = merged(scheds, from, { count: 1 });
+  return t === undefined ? null : new Date(t);
 }
 
 /** Smallest gap, in whole minutes, between the next 50 combined runs. */

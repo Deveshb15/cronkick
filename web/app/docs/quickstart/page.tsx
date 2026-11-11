@@ -24,7 +24,7 @@ jobs:
       </Callout>
 
       <H2 id="push">3. Push to the default branch</H2>
-      <p>Cronkick reads the file within seconds. Open your <a href="/dashboard">dashboard</a>: the workflow shows up as <strong>Active</strong> with a countdown to its next run. If something in the workflow would break a dispatched run, it shows <strong>Needs a fix</strong> with the reason instead.</p>
+      <p>Cronkick reads the file within seconds. Open your <a href="/dashboard">dashboard</a>: the workflow shows up with its next scheduled time. The example above first runs at the next 03:00 UTC. If something in the workflow would break a dispatched run, it shows <strong>Needs a fix</strong> with the reason instead.</p>
     </Doc>
   );
 }

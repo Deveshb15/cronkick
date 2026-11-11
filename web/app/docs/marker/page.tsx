@@ -31,7 +31,7 @@ export default function Marker() {
   # cronkick: "0 12 * * 6,0" tz=America/New_York`}</Code>
 
       <H2 id="daylight-saving">Daylight saving time</H2>
-      <p>With a <code>tz=</code>, times follow the local clock. When the clock skips an hour, a run in the skipped hour fires once at the first valid time. When the clock repeats an hour, it runs once.</p>
+      <p>With a <code>tz=</code>, times follow the local clock. When the clock skips an hour, a run in the skipped hour fires once, an hour later on the new clock (02:30 becomes 03:30). When the clock repeats an hour, it runs once.</p>
     </Doc>
   );
 }

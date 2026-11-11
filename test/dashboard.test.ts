@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
 import { accountHealth, activity, overview, recentSlots, setDismissed, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
+import { VERDICT } from '../web/lib/format.ts';
 import { decodeSession, encodeSession } from '../web/lib/session.ts';
 import { freshDb, seed } from './helpers.ts';
 
@@ -11,14 +12,25 @@ afterAll(() => db.end());
 const NOW = new Date('2026-11-10T12:00:00Z');
 const ago = (min: number) => new Date(NOW.getTime() - min * 60_000);
 
-async function slot(dueMinAgo: number, state: string, firstAttemptSec: number | null, workflowId = 100, inst = 1, repo = 10, conclusion: string | null = null) {
+/**
+ * A slot due `dueMinAgo` minutes before NOW. `firstAttemptSec` is when Cronkick first tried; `firedSec` is when GitHub
+ * accepted it (scoring uses this). By default a sent slot's firedSec equals its first try; pass it to set it apart.
+ */
+async function slot(dueMinAgo: number, state: string, firstAttemptSec: number | null, workflowId = 100, inst = 1, repo = 10, conclusion: string | null = null,
+  { firedSec = state === 'fired' || state === 'accepted' ? firstAttemptSec : null, attempts = firstAttemptSec === null ? 0 : 1, status = null as number | null }:
+    { firedSec?: number | null; attempts?: number; status?: number | null } = {}) {
   const due = ago(dueMinAgo);
+  const at = (sec: number | null) => (sec === null ? null : new Date(due.getTime() + sec * 1000));
   await db.query(
-    `INSERT INTO slots (installation_id, repo_id, workflow_id, due_at, fire_at, deadline_at, next_attempt_at, state, first_attempt_at, conclusion)
-     VALUES ($1, $2, $3, $4, $4, $4, $4, $5, $6, $7)`,
-    [inst, repo, workflowId, due, state, firstAttemptSec === null ? null : new Date(due.getTime() + firstAttemptSec * 1000), conclusion],
+    `INSERT INTO slots (installation_id, repo_id, workflow_id, due_at, fire_at, deadline_at, next_attempt_at, state, first_attempt_at, fired_at, attempts, response_status, conclusion)
+     VALUES ($1, $2, $3, $4, $4, $4, $4, $5, $6, $7, $8, $9, $10)`,
+    [inst, repo, workflowId, due, state, at(firstAttemptSec), at(firedSec), attempts, status, conclusion],
   );
 }
+const secAgo = (sec: number) => sec / 60; // dueMinAgo for a slot due `sec` seconds ago
+const none = { due: 0, onTime: 0, late: 0, waiting: 0, overdue: 0, retrying: 0, unconfirmed: 0, refused: 0, gaveUp: 0, passed: 0, failed: 0 };
+/** R1: every due slot is in exactly one bucket. */
+const partitions = (c: typeof none) => c.due === c.onTime + c.late + c.waiting + c.overdue + c.unconfirmed + c.refused + c.gaveUp;
 
 test('workflow status rules', () => {
   const s = (status: 'active' | 'paused_limit') => ({ cron: '0 * * * *', tz: 'UTC', status });
@@ -41,17 +53,17 @@ test('overview: 24 h counts cover due slots only, with late/unconfirmed/gave-up 
   await slot(60 * 25, 'accepted', 1); // older than 24 h
   await slot(-10, 'pending', null);   // upcoming: not a run yet
   const { repos, totals } = await overview(db, 1, NOW);
-  expect(repos[0].workflows[0].c24).toEqual({ due: 4, onTime: 1, late: 1, unconfirmed: 1, gaveUp: 1, passed: 1, failed: 0 });
+  expect(repos[0].workflows[0].c24).toEqual({ ...none, due: 4, onTime: 1, late: 1, unconfirmed: 1, gaveUp: 1, passed: 1 });
   expect(totals.c24.due).toBe(4);
   expect(totals.verdict).toBe('missed');
   expect(totals.nextKick).toMatchObject({ workflowId: 100, workflow: 'nightly', repo: 'acme/app', alsoDue: 0 });
-  expect(totals.nextKick!.due).toBe(new Date(NOW.getTime() + 10 * 60_000).toISOString());
+  expect(totals.nextKick!.due).toBe(new Date(NOW.getTime() + 5 * 60_000).toISOString()); // from the cron, not the slot table
 });
 
 test('overview: verdicts, median delay and job results', async () => {
   await seed(db);
   await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
-  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'no_runs', medianDelayMs: null, nextKick: null });
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'no_runs', medianDelayMs: null, nextKick: { due: ago(-5).toISOString() } });
   await slot(5, 'accepted', 0.05, 100, 1, 10, 'success');
   await slot(10, 'accepted', 0.06, 100, 1, 10, 'success');
   await slot(15, 'fired', 0.04, 100, 1, 10, 'failure');
@@ -63,6 +75,18 @@ test('overview: verdicts, median delay and job results', async () => {
   expect([t.c24.passed, t.c24.failed]).toEqual([2, 1]);
   await slot(25, 'fired', 45);
   expect((await overview(db, 1, NOW)).totals.verdict).toBe('late');
+});
+
+test('overview and history: a coverage gap in range blocks on time and is shown', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron, created_at) VALUES (100, '*/5 * * * *', $1)`, [ago(60 * 48)]);
+  await slot(5, 'accepted', 1);
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 30), ago(60 * 26)]); // ended 26 h ago
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [] });
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
+  const gap = { start: ago(60 * 5).toISOString(), end: ago(60 * 2).toISOString() };
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'coverage_gap', gaps: [gap] });
+  expect((await workflowHistory(db, 1, 100, NOW))!.gaps).toHaveLength(2); // Pro shows 90 days
 });
 
 test('overview: nothing scheduled, needs-fix wins, and two workflows due together', async () => {
@@ -115,7 +139,7 @@ test('slots: tick colours, details, oldest first, no padding', async () => {
   expect(toTick('accepted', 2_000)).toBe('ontime');
   expect(toTick('fired', 45_000)).toBe('late');
   expect(toTick('expired', null)).toBe('missed');
-  expect(toTick('unknown', 1_000)).toBe('missed');
+  expect(toTick('unknown', 1_000)).toBe('unconfirmed');
   expect(toTick('skipped', null)).toBe('idle');
   await seed(db);
   await slot(3, 'accepted', 1);
@@ -124,7 +148,7 @@ test('slots: tick colours, details, oldest first, no padding', async () => {
   await slot(-1, 'pending', null);
   const list = (await recentSlots(db, 1, NOW, 5)).get(100)!;
   expect(list.map((x) => x.tick)).toEqual(['ontime', 'late', 'missed']);
-  expect(list[0]).toMatchObject({ workflowId: 100, state: 'accepted', delayMs: 1000, due: ago(3).toISOString() });
+  expect(list[0]).toMatchObject({ workflowId: 100, state: 'accepted', display: 'accepted', sendDelayMs: 1000, due: ago(3).toISOString() });
 });
 
 test('activity: newest first, only slots Cronkick acted on, scoped to the installation', async () => {
@@ -149,7 +173,7 @@ test('account health: a missed run marks only its own account', async () => {
   const h = await accountHealth(db, [1, 2, 3], NOW);
   expect(h.get(1)).toEqual({ schedules: 1, health: 'on_time' });
   expect(h.get(2)).toEqual({ schedules: 1, health: 'missed' });
-  expect(h.get(3)).toEqual({ schedules: 0, health: 'no_runs' });
+  expect(h.get(3)).toEqual({ schedules: 0, health: 'nothing_scheduled' });
 });
 
 test('workflow history: filters and 24 h health', async () => {
@@ -177,4 +201,259 @@ test('keep it on GitHub: hides only within the installation, and can be undone',
   expect((await overview(db, 1, NOW)).repos[0].workflows[0].dismissed).toBe(true);
   await setDismissed(db, 1, 100, false);
   expect((await overview(db, 1, NOW)).repos[0].workflows[0].dismissed).toBe(false);
+});
+
+test('R1: one pending slot 5 min overdue makes the account behind, and due partitions exactly', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
+  await slot(15, 'accepted', 1);
+  await slot(10, 'accepted', 2);
+  await slot(5, 'pending', null);
+  const { totals } = await overview(db, 1, NOW);
+  expect(totals.c24).toEqual({ ...none, due: 3, onTime: 2, overdue: 1 });
+  expect(partitions(totals.c24)).toBe(true);
+  expect(totals.verdict).toBe('behind');
+});
+
+test('waiting vs overdue: 60 s from due, for pending and dispatching alike; retries are flagged', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '* * * * *')`);
+  await slot(secAgo(20), 'pending', null);
+  let t = (await overview(db, 1, NOW)).totals;
+  expect(t.c24).toMatchObject({ due: 1, waiting: 1, overdue: 0 });
+  expect(t.verdict).toBe('in_progress');
+  expect(partitions(t.c24)).toBe(true);
+
+  await db.query('DELETE FROM slots');
+  await slot(secAgo(20), 'dispatching', 0);
+  await slot(secAgo(90), 'dispatching', 0); // first try still in flight: not sent yet, not a GitHub error
+  await slot(3, 'pending', 0, 100, 1, 10, null, { status: 503 }); // retry backoff after a GitHub 5xx
+  const strip = (await recentSlots(db, 1, NOW)).get(100)!;
+  expect(strip.map((x) => [x.display, x.tick, x.retrying])).toEqual([['overdue', 'overdue', true], ['overdue', 'overdue', false], ['waiting', 'waiting', false]]);
+  t = (await overview(db, 1, NOW)).totals;
+  expect(t.c24).toMatchObject({ due: 3, waiting: 1, overdue: 2, retrying: 1 });
+  expect(partitions(t.c24)).toBe(true);
+  expect(t.verdict).toBe('behind');
+});
+
+test('R3: on time is scored from the send; unconfirmed shows when it was tried, not a send', async () => {
+  await seed(db);
+  await slot(10, 'accepted', 0, 100, 1, 10, null, { firedSec: 240 }); // claimed on time, GitHub accepted 4 min later
+  await slot(5, 'unknown', 1);
+  const c = (await overview(db, 1, NOW)).repos[0].workflows[0].c24;
+  expect(c).toMatchObject({ onTime: 0, late: 1, unconfirmed: 1 });
+  const rows = (await workflowHistory(db, 1, 100, NOW))!.slots;
+  expect(rows[1]).toMatchObject({ state: 'accepted', tick: 'late', sendDelayMs: 240_000, triedDelayMs: 0 });
+  expect(rows[0]).toMatchObject({ state: 'unknown', tick: 'unconfirmed', sendDelayMs: null, triedDelayMs: 1000 });
+  expect((await workflowHistory(db, 1, 100, NOW, 'late'))!.slots.map((x) => x.state)).toEqual(['accepted']);
+});
+
+test('R4: unconfirmed is its own verdict, not missed; refused is missed', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
+  await slot(15, 'accepted', 1);
+  await slot(10, 'unknown', 1);
+  expect((await overview(db, 1, NOW)).totals.verdict).toBe('unconfirmed');
+  expect((await workflowHistory(db, 1, 100, NOW, 'missed'))!.slots).toEqual([]);
+  expect((await workflowHistory(db, 1, 100, NOW, 'unconfirmed'))!.slots.map((x) => x.state)).toEqual(['unknown']);
+  await slot(5, 'rejected', 1);
+  const t = (await overview(db, 1, NOW)).totals;
+  expect(t.verdict).toBe('missed');
+  expect(t.c24).toMatchObject({ refused: 1, unconfirmed: 1 });
+  expect(toTick('rejected', null)).toBe('missed');
+  expect(toTick('unknown', null)).toBe('unconfirmed');
+});
+
+test('R8: misses survive a workflow being flagged or its repo deselected; switcher agrees with the overview', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO repos (id, installation_id, full_name, default_branch) VALUES (11, 1, 'acme/other', 'main')`);
+  await db.query(`INSERT INTO workflows (id, repo_id, path, name) VALUES (101, 10, '.github/workflows/b.yml', 'b'), (102, 11, '.github/workflows/c.yml', 'c')`);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *'), (101, '*/5 * * * *'), (102, '*/5 * * * *')`);
+  await slot(20, 'accepted', 1);
+  await slot(15, 'expired', null, 101);
+  await slot(10, 'expired', null, 102, 1, 11);
+  await db.query(`UPDATE workflows SET flags = '[{"message":"x"}]' WHERE id = 101`);
+  await db.query(`UPDATE repos SET active = false WHERE id = 11`);
+  const { totals } = await overview(db, 1, NOW);
+  expect(totals.c24).toMatchObject({ due: 3, onTime: 1, gaveUp: 2 });
+  expect(totals.verdict).toBe('needs_fix');
+  expect((await accountHealth(db, [1], NOW)).get(1)).toEqual({ schedules: totals.activeSchedules, health: totals.verdict });
+  await db.query(`UPDATE workflows SET flags = '[]' WHERE id = 101`);
+  const again = (await overview(db, 1, NOW)).totals;
+  expect(again.verdict).toBe('missed');
+  expect((await accountHealth(db, [1], NOW)).get(1)).toEqual({ schedules: again.activeSchedules, health: 'missed' });
+});
+
+test('recent slots and activity include an overdue row; a waiting one stays out of the feed', async () => {
+  await seed(db);
+  await slot(5, 'pending', null);
+  await slot(secAgo(20), 'pending', null);
+  expect((await recentSlots(db, 1, NOW)).get(100)!.map((x) => x.display)).toEqual(['overdue', 'waiting']);
+  const a = await activity(db, 1, NOW);
+  expect(a.map((x) => [x.display, x.tick])).toEqual([['overdue', 'overdue']]);
+});
+
+test('first run: only until a slot comes due; an overdue first slot is the incident view', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
+  expect((await overview(db, 1, NOW)).totals.anyDue).toBe(false);
+  await slot(-5, 'pending', null);
+  expect((await overview(db, 1, NOW)).totals.anyDue).toBe(false);
+  await slot(5, 'pending', null);
+  const t = (await overview(db, 1, NOW)).totals;
+  expect(t).toMatchObject({ anyDue: true, verdict: 'behind' });
+  expect(await activity(db, 1, NOW)).toHaveLength(1);
+});
+
+test('R5: a daily-only schedule 13 h before due is configured, with its next due from the cron', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '0 1 * * *')`); // NOW is 12:00 UTC: next is 01:00 tomorrow
+  const { repos, totals } = await overview(db, 1, NOW);
+  expect(repos[0].workflows[0]).toMatchObject({ status: 'active', nextDue: '2026-11-11T01:00:00.000Z' });
+  expect(totals).toMatchObject({ anyDue: false, nextKick: { workflowId: 100, due: '2026-11-11T01:00:00.000Z' } });
+  expect((await workflowHistory(db, 1, 100, NOW))!.next).toBe('2026-11-11T01:00:00.000Z');
+});
+
+test('R5: no next due for a suspended installation, an inactive repo, or a paused schedule', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '0 1 * * *')`);
+  await db.query('UPDATE installations SET suspended = true WHERE id = 1');
+  expect((await overview(db, 1, NOW)).repos[0].workflows[0].nextDue).toBeNull();
+  expect((await workflowHistory(db, 1, 100, NOW))!.next).toBeNull();
+  await db.query('UPDATE installations SET suspended = false WHERE id = 1');
+  await db.query('UPDATE repos SET active = false WHERE id = 10');
+  expect((await workflowHistory(db, 1, 100, NOW))!.next).toBeNull();
+  await db.query('UPDATE repos SET active = true WHERE id = 10');
+  await db.query(`UPDATE schedules SET status = 'paused_limit'`);
+  expect((await workflowHistory(db, 1, 100, NOW))!.next).toBeNull();
+});
+
+test('R6: zero active repositories leaves nothing to show but the choose-repositories state', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '0 1 * * *')`);
+  await db.query('UPDATE repos SET active = false');
+  const { repos, totals } = await overview(db, 1, NOW);
+  expect(repos).toEqual([]);
+  expect(totals).toMatchObject({ anyDue: false, nextKick: null, verdict: 'nothing_scheduled' });
+});
+
+test('history pages back with a before cursor, within the plan window', async () => {
+  await seed(db); // Pro: 90 days
+  await db.query(
+    `INSERT INTO slots (installation_id, repo_id, workflow_id, due_at, fire_at, deadline_at, next_attempt_at, state, first_attempt_at, fired_at)
+     SELECT 1, 10, 100, d, d, d, d, 'fired', d, d FROM generate_series($1::timestamptz - interval '5 minutes', $1::timestamptz - interval '3000 minutes', interval '-5 minutes') d`,
+    [NOW],
+  );
+  const first = (await workflowHistory(db, 1, 100, NOW))!;
+  expect(first.slots).toHaveLength(500);
+  expect(first.hasOlder).toBe(true);
+  const older = (await workflowHistory(db, 1, 100, NOW, undefined, new Date(first.slots[499].due)))!;
+  expect(older.slots).toHaveLength(100);
+  expect(older.hasOlder).toBe(false);
+  expect(older.slots[0].due).toBe(ago(2505).toISOString()); // no gap, no repeat
+  const past = (await workflowHistory(db, 1, 100, NOW, undefined, ago(91 * 24 * 60)))!; // before the 90-day window
+  expect(past.slots).toEqual([]);
+  expect(past.hasOlder).toBe(false);
+  const bad = (await workflowHistory(db, 1, 100, NOW, undefined, new Date('nonsense')))!; // ignored, so the newest page
+  expect(bad.slots[0].due).toBe(ago(5).toISOString());
+  expect(bad.hasOlder).toBe(true);
+});
+
+test('verdict: the last workflow flagged after a miss is needs-fix, and its last repo deselected stays missed', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
+  await slot(10, 'expired', null);
+  await db.query(`UPDATE workflows SET flags = '[{"message":"x"}]'`);
+  let t = (await overview(db, 1, NOW)).totals;
+  expect(t).toMatchObject({ activeSchedules: 0, verdict: 'needs_fix' });
+  expect((await accountHealth(db, [1], NOW)).get(1)).toEqual({ schedules: 0, health: 'needs_fix' });
+  await db.query(`UPDATE workflows SET flags = '[]'`);
+  await db.query('UPDATE repos SET active = false');
+  t = (await overview(db, 1, NOW)).totals;
+  expect(t).toMatchObject({ activeSchedules: 0, verdict: 'missed' });
+  expect((await accountHealth(db, [1], NOW)).get(1)).toEqual({ schedules: 0, health: 'missed' });
+});
+
+test('headline: on time with no live schedules left (marker removed) does not say "All 0 schedules"', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
+  await slot(10, 'fired', 2);
+  await slot(5, 'fired', 1);
+  await db.query('DELETE FROM schedules');
+  const t = (await overview(db, 1, NOW)).totals;
+  expect(t).toMatchObject({ activeSchedules: 0, verdict: 'on_time' });
+  expect(VERDICT[t.verdict](t.activeSchedules, t.c24)).toBe('No active schedules. Last 24 h: 2 runs on time');
+  expect(VERDICT.on_time(3, t.c24)).toBe('All 3 schedules on time');
+});
+
+test('workflow page: a removed marker reads as not scheduled, a plan-limit pause as limited', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron, status) VALUES (100, '0 * * * *', 'paused_limit')`);
+  expect((await workflowHistory(db, 1, 100, NOW))!.status).toBe('limited');
+  await slot(10, 'fired', 1);
+  await db.query('DELETE FROM schedules'); // what sync does when the # cronkick line goes
+  expect((await workflowHistory(db, 1, 100, NOW))!.status).toBe('none');
+});
+
+test('first run: a recorded outage takes the normal overview, with its verdict', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '0 1 * * *')`); // nothing due in the last 24 h
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ anyDue: false, firstRun: true });
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ anyDue: false, firstRun: false, verdict: 'coverage_gap' });
+  await db.query(`UPDATE workflows SET flags = '[{"message":"x"}]'`);
+  expect((await overview(db, 1, NOW)).totals.firstRun).toBe(false);
+});
+
+test('workflow health: an outage in the last 24 h or a needed fix outranks on-time counts, in history and the overview row', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
+  await slot(5, 'accepted', 1);
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 30), ago(60 * 26)]); // older than 24 h
+  expect((await workflowHistory(db, 1, 100, NOW))!.health).toBe('on_time');
+  expect((await overview(db, 1, NOW)).repos[0].workflows[0].health).toBe('on_time');
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
+  expect((await workflowHistory(db, 1, 100, NOW))!.health).toBe('coverage_gap');
+  expect((await overview(db, 1, NOW)).repos[0].workflows[0].health).toBe('coverage_gap');
+  await db.query(`UPDATE workflows SET flags = '[{"message":"x"}]'`);
+  expect((await workflowHistory(db, 1, 100, NOW))!.health).toBe('needs_fix');
+  expect((await overview(db, 1, NOW)).repos[0].workflows[0].health).toBe('needs_fix');
+});
+
+test('workflow health: an outage marks only workflows with a due time inside it', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO workflows (id, repo_id, path, name) VALUES (101, 10, '.github/workflows/daily.yml', 'daily')`);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *'), (101, '0 3 * * *')`);
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]); // 07:00-10:00, no 03:00
+  const health = async () => Object.fromEntries((await overview(db, 1, NOW)).repos[0].workflows.map((w) => [w.name, w.health]));
+  expect(await health()).toEqual({ daily: 'no_runs', nightly: 'coverage_gap' });
+  expect((await workflowHistory(db, 1, 101, NOW))!.health).toBe('no_runs');
+  expect((await overview(db, 1, NOW)).totals.verdict).toBe('coverage_gap'); // the account verdict still shows it
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 10), ago(60 * 8)]); // 02:00-04:00
+  expect(await health()).toEqual({ daily: 'coverage_gap', nightly: 'coverage_gap' });
+  expect((await workflowHistory(db, 1, 101, NOW))!.health).toBe('coverage_gap');
+});
+
+test('gaps that ended before an installation existed are not its outage', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
+  await slot(5, 'accepted', 1);
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
+  await db.query('UPDATE installations SET created_at = $1', [ago(60)]);
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [] });
+  expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('on_time');
+  expect((await workflowHistory(db, 1, 100, NOW))!).toMatchObject({ health: 'on_time', gaps: [] });
+  await db.query('UPDATE installations SET created_at = $1', [ago(60 * 3)]); // existed before it ended
+  expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('coverage_gap');
+});
+
+test('history cursor: future cursors are ignored; one older than retention, however extreme, is empty without a query', async () => {
+  await seed(db);
+  await slot(5, 'fired', 1);
+  const newest = async (before: Date) => (await workflowHistory(db, 1, 100, NOW, undefined, before))!;
+  expect(await newest(new Date('-100000-01-01T00:00:00Z'))).toMatchObject({ slots: [], hasOlder: false });
+  expect((await newest(new Date('+100000-01-01T00:00:00Z'))).slots).toHaveLength(1);
+  expect((await newest(ago(-60))).slots).toHaveLength(1); // future
+  const old = await newest(new Date('1000-01-01T00:00:00Z'));
+  expect(old).toMatchObject({ slots: [], hasOlder: false });
 });

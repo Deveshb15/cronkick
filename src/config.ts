@@ -24,6 +24,11 @@ export function directDbUrl(): string {
   return process.env.DATABASE_DIRECT_URL || dbUrl();
 }
 
+/** Probe repos for /lateness. The web server reads this too (same env file), so its report covers every configured repo. */
+export function probeRepos(): string[] {
+  return (process.env.PROBE_REPOS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 /** Full app config. Only called by main.ts, so tests don't need GitHub secrets. */
 export function loadConfig() {
   return {
@@ -38,7 +43,7 @@ export function loadConfig() {
     webhookSecret: need('GITHUB_WEBHOOK_SECRET'),
     resendApiKey: process.env.RESEND_API_KEY ?? '',
     mailFrom: process.env.MAIL_FROM ?? 'Cronkick <alerts@cronkick.xyz>',
-    probeRepos: (process.env.PROBE_REPOS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    probeRepos: probeRepos(),
     probeToken: process.env.PROBE_TOKEN ?? '',
   };
 }

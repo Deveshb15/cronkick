@@ -1,6 +1,7 @@
 'use client';
 import { CheckCircleIcon, CheckIcon, Square2StackIcon } from '@heroicons/react/16/solid';
 import { useEffect, useState, type ReactNode } from 'react';
+import { Badge, SLOT_LABEL } from './ui';
 
 // Hero demo: the marker types itself in, Cronkick syncs it, slots fire one by one,
 // then a real countdown to the next */15 slot. Slot data is illustrative.
@@ -51,7 +52,7 @@ export function MarkerCard() {
         <div aria-hidden="true" className="absolute inset-x-12 top-0 h-px bg-linear-to-r from-transparent via-brand-300/60 to-transparent" />
         <div className="flex items-center gap-x-3 border-b border-white/5 px-4 py-3">
           <div aria-hidden="true" className="flex gap-x-1.5"><span className="size-2.5 rounded-full bg-white/10" /><span className="size-2.5 rounded-full bg-white/10" /><span className="size-2.5 rounded-full bg-white/10" /></div>
-          <p className="truncate font-mono text-xs/5 text-zinc-500">.github/workflows/nightly.yml</p>
+          <p className="truncate font-mono text-xs/5 text-zinc-500">.github/workflows/sync.yml</p>
           <p className="ml-auto flex shrink-0 items-center gap-x-2 font-mono text-xs/5 text-zinc-400">
             <span className="relative flex size-2">
               <span className={`absolute inline-flex size-full rounded-full bg-emerald-400 opacity-60 ${live ? 'animate-ping' : 'hidden'}`} />
@@ -62,17 +63,17 @@ export function MarkerCard() {
         </div>
 
         <div className="overflow-x-auto py-4 font-mono whitespace-pre text-[0.8125rem]/7 text-zinc-300 sm:text-sm/7">
-          <Line n={1}><K>name</K>: nightly</Line>
+          <Line n={1}><K>name</K>: sync</Line>
           <Line n={2}><K>on</K>:</Line>
           <Line n={3}>  <K>workflow_dispatch</K>:</Line>
-          <div className={`group relative flex items-center transition-colors duration-500 ${done ? 'bg-brand-500/10 shadow-[inset_2px_0_0_var(--color-brand-500)]' : ''}`}>
+          <div className={`relative flex items-center transition-colors duration-500 ${done ? 'bg-brand-500/10 shadow-[inset_2px_0_0_var(--color-brand-500)]' : ''}`}>
             <span aria-hidden="true" className="w-12 shrink-0 pr-4 text-right text-zinc-700 select-none">4</span>
             <span className={done ? 'text-brand-400' : 'text-zinc-500'}>  {MARKER.slice(0, typed)}</span>
             {!done && <span aria-hidden="true" className="ml-px inline-block h-4 w-[2px] animate-caret bg-brand-400" />}
             <button
               type="button"
               onClick={copy}
-              className="mr-3 ml-auto flex items-center gap-x-1 rounded-md bg-white/5 px-2 py-0.5 font-sans text-xs/5 text-zinc-300 opacity-0 inset-ring inset-ring-white/10 transition group-hover:opacity-100 hover:bg-white/10 focus-visible:opacity-100"
+              className="mr-3 ml-auto flex items-center gap-x-1 rounded-md bg-white/5 px-2 py-0.5 font-sans text-xs/5 text-zinc-300 inset-ring inset-ring-white/10 transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {copied ? <CheckIcon aria-hidden="true" className="size-3.5 fill-emerald-400" /> : <Square2StackIcon aria-hidden="true" className="size-3.5 fill-zinc-400" />}
               {copied ? 'Copied' : 'Copy'}
@@ -84,10 +85,10 @@ export function MarkerCard() {
 
         <div className="border-t border-white/5 px-4 pt-3 pb-4">
           <div className="flex items-center justify-between font-mono text-xs/5 text-zinc-500">
-            <span>Last {N} slots <span className="text-zinc-600">(example)</span></span>
+            <span className="flex items-center gap-x-2">Last {N} slots <Badge>Example</Badge></span>
             <span className={live ? 'text-emerald-400' : ''}>{filled} of {N} on time</span>
           </div>
-          <div role="img" aria-label={`${N} slots, all triggered on time`} className="mt-2.5 flex h-7 gap-[3px]">
+          <div role="img" aria-label={`Example: ${N} slots, all sent on time`} className="mt-2.5 flex h-7 gap-[3px]">
             {Array.from({ length: N }, (_, i) => (
               <span
                 key={i}
@@ -103,8 +104,8 @@ export function MarkerCard() {
         <div key={last} className="absolute -right-4 -bottom-7 flex animate-pop items-center gap-x-3 rounded-xl bg-zinc-900/90 py-2.5 pr-4 pl-3 shadow-xl shadow-black/50 inset-ring inset-ring-white/10 backdrop-blur max-sm:hidden">
           <CheckCircleIcon aria-hidden="true" className="size-5 fill-emerald-400" />
           <div className="text-left">
-            <p className="text-xs/5 font-medium">Dispatched nightly.yml</p>
-            <p className="font-mono text-[0.6875rem]/4 text-zinc-500">{hhmm(last)} UTC · 204 · +1.8s</p>
+            <p className="text-xs/5 font-medium">{SLOT_LABEL.fired} sync.yml</p>
+            <p className="font-mono text-[0.6875rem]/4 text-zinc-500">{hhmm(last)} UTC · +1.8 s · example</p>
           </div>
         </div>
       )}

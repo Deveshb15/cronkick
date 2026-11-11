@@ -1,20 +1,16 @@
 import { CheckIcon, MinusIcon, XMarkIcon } from '@heroicons/react/16/solid';
-import { AppFrame, FloatCard } from '@/components/frame';
+import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { AppFrame } from '@/components/frame';
 import { GitHubMark } from '@/components/icons';
 import { Symbol } from '@/components/logo';
 import { MarkerCard } from '@/components/marker-card';
-import {
-  AlertVignette, ChartVignette, CompatVignette, DashboardShot, DiffVignette, EventCard,
-  LifecycleVignette, PermissionsVignette, RunTableVignette,
-} from '@/components/product';
+import { DashboardShot, DiffVignette } from '@/components/product';
 import { BentoCard, SplitHeading } from '@/components/section';
 import { SiteFooter, SiteHeader, container } from '@/components/site';
 import { TimelineCompare } from '@/components/timeline-compare';
-import { Badge, ButtonLink, Code, Eyebrow } from '@/components/ui';
-import { db } from '@/lib/db';
+import { ButtonLink, Code, Eyebrow } from '@/components/ui';
 import { installUrl } from '@/lib/format';
-import { getSession } from '@/lib/session';
-import { probeReport } from '../../src/probe/collector.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +22,7 @@ const compare: [string, Cell, Cell, Cell][] = [
   ['Runs when it should', 'Best effort', true, true],
   ['Schedule lives in your repo', true, false, true],
   ['No personal access token', true, false, true],
-  ['Every slot accounted for', false, false, true],
+  ['Records each planned run, and its own outages', false, false, true],
   ['Knows if the run passed', 'Per run', false, true],
   ['Flags workflows that would break', false, false, true],
 ];
@@ -38,25 +34,24 @@ function Mark({ v }: { v: Cell }) {
 
 const plans = [
   { name: 'Free', price: '$0', note: 'For side projects and open source.', items: ['Unlimited repositories', '10 schedules', 'Every 15 minutes or slower', '7 days of history'], href: installUrl(), cta: 'Install free', github: true },
-  { name: 'Pro', price: '$9', note: 'Per GitHub account or organization. $90 billed yearly.', items: ['50 schedules across any repositories', 'Every 5 minutes or slower', 'Email alerts for missed and failed runs', '90 days of history and run charts'], href: 'mailto:hi@cronkick.xyz?subject=Cronkick%20Pro', cta: 'Get Pro', badge: 'Most teams' },
+  { name: 'Pro', price: '$9', note: 'Per GitHub account or organization, or $90 a year. No card checkout yet: email us and we switch your account by hand.', items: ['50 schedules across any repositories', 'Every 5 minutes or slower', 'Email alerts for missed and failed runs', '90 days of history'], href: 'mailto:hi@cronkick.xyz?subject=Cronkick%20Pro', cta: 'Request Pro · manual activation', featured: true },
 ];
 
-const faqs = [
+const inline = 'font-medium text-white hover:underline';
+const faqs: { q: string; a: ReactNode }[] = [
   { q: 'Does Cronkick run my code?', a: 'No. It sends GitHub the same workflow_dispatch request as the Run workflow button. Your jobs run on your runners, exactly as before.' },
-  { q: 'What if GitHub’s API is down?', a: 'We retry until the slot’s deadline, then mark it expired rather than run it late. Every failure shows up in your history instead of disappearing.' },
-  { q: 'Why not keep schedule: as a backup?', a: 'GitHub would then run the same workflow a second time, late. Cronkick flags any workflow that still has both.' },
+  { q: 'What if GitHub’s API is down?', a: 'If GitHub is throttling or erroring, Cronkick retries until the slot’s deadline, then skips it rather than run it late. If GitHub refuses the request, the run shows as Refused with GitHub’s reason. If Cronkick can’t tell whether GitHub got the request, it doesn’t resend.' },
+  { q: 'What if Cronkick goes down?', a: <>After a restart Cronkick may still send a run if its deadline hasn’t passed; after the deadline it gives up rather than run it late, and the run shows as Gave up with a note saying so. If its scheduler is down for more than 2 hours, the gap shows as an outage window on your dashboard. Pro accounts with an alert address get one outage email, plus a summary of runs Cronkick didn’t send, at most one an hour. There is no automatic fallback to GitHub’s scheduler. <Link href="/docs/migrate#go-back" className={inline}>How to go back →</Link></> },
+  { q: 'Why not keep schedule: as a backup?', a: 'GitHub would then run the same workflow a second time, late. Cronkick won’t send a workflow that still has both.' },
   { q: 'Can I use timezones and several schedules?', a: 'Yes. Add tz=Europe/Berlin to a comment and as many # cronkick lines as you need. Schedules due at the same moment fire once.' },
-  { q: 'What permissions does it need?', a: 'Actions read and write to dispatch workflows, Contents read-only to find the comments. Tokens are issued by GitHub for one hour at a time.' },
-  { q: 'What happens at my plan’s limit?', a: 'Extra schedules pause and we email you. We never charge for going over.' },
+  { q: 'What permissions does it need?', a: <>Actions read and write, Contents read and Metadata read. Cronkick reads workflow files; the permission allows reading any file in the repos you select. Actions write also allows starting any workflow that has workflow_dispatch:, on any branch, and cancelling, re-running and deleting runs; Cronkick only starts the ones you mark. Tokens are issued by GitHub for one hour at a time. <Link href="/docs/security" className={inline}>What Cronkick can access →</Link></> },
+  { q: 'What happens at my plan’s limit?', a: 'Extra schedules pause, and we email you if you’ve added an alert address in Settings. We never charge for going over.' },
 ];
 
-export default async function Home() {
-  const [session, reports] = await Promise.all([getSession(), probeReport(db, new Date()).catch(() => [])]);
-  const live = reports.find((r) => r.stats.expected > 0);
-  const pill = live ? `GitHub missed ${(live.stats.missingShare * 100).toFixed(0)}% of scheduled runs this week` : 'How late is GitHub’s scheduler right now?';
+export default function Home() {
   return (
     <>
-      <SiteHeader signedIn={!!session} />
+      <SiteHeader />
       <main className="overflow-x-clip">
         {/* Hero: one centred stack, then the marker card as the product shot */}
         <section className="relative isolate overflow-hidden pt-14 pb-24 sm:pt-20 sm:pb-28">
@@ -68,24 +63,21 @@ export default async function Home() {
           </div>
           <div aria-hidden="true" className="hero-glow absolute inset-0 -z-10" />
           <div className={`${container} flex flex-col items-center text-center`}>
-            <a href="/lateness" className="inline-flex animate-rise items-center gap-x-2 rounded-full bg-white/5 py-1 pr-3 pl-1 text-sm/6 text-zinc-300 inset-ring inset-ring-white/10 transition hover:bg-white/10 hover:inset-ring-brand-500/40">
-              <span className="flex items-center gap-x-1.5 rounded-full bg-red-500/15 px-2 font-mono text-xs/5 font-medium text-red-300 uppercase"><span className="size-1.5 animate-pulse rounded-full bg-red-400" />live</span>
-              {pill} <span aria-hidden="true" className="text-zinc-500">→</span>
-            </a>
-            <h1 className="mt-8 max-w-[14ch] text-5xl/[1.02] font-semibold tracking-tight text-balance sm:text-7xl/[1.02] lg:text-[5.5rem]/[1]">
-              {['One', 'comment.', 'Every', 'run'].map((w, i) => <span key={w} className="inline-block animate-rise" style={{ animationDelay: `${120 + i * 70}ms` }}>{w}&nbsp;</span>)}
-              <span className="inline-block bg-[linear-gradient(90deg,var(--color-brand-300),var(--color-brand-500),#ff8a1f,var(--color-brand-300))] bg-size-[200%_auto] bg-clip-text text-transparent" style={{ animation: 'rise .9s cubic-bezier(.2,.7,.2,1) 400ms backwards, shimmer 6s linear infinite' }}>on time.</span>
+            <h1 className="max-w-[14ch] text-5xl/[1.02] font-semibold tracking-tight text-balance sm:text-7xl/[1.02] lg:text-[5.5rem]/[1]">
+              {['Keep', 'GitHub', 'Actions', 'on', 'your'].map((w, i) => <span key={w} className="inline-block animate-rise" style={{ animationDelay: `${120 + i * 70}ms` }}>{w}&nbsp;</span>)}
+              <span className="inline-block bg-[linear-gradient(90deg,var(--color-brand-300),var(--color-brand-500),#ff8a1f,var(--color-brand-300))] bg-size-[200%_auto] bg-clip-text text-transparent" style={{ animation: 'rise .9s cubic-bezier(.2,.7,.2,1) 470ms backwards, shimmer 6s linear infinite' }}>schedule.</span>
             </h1>
             <p className="mt-6 max-w-[52ch] animate-rise text-lg text-pretty text-zinc-400 [animation-delay:480ms]">
-              GitHub’s cron is best effort: runs start late or never. Add one comment to your workflow and Cronkick triggers it on the minute, with no tokens and nothing to host.
+              GitHub’s cron is best effort: runs can start late or not at all. Add one comment to your workflow and Cronkick sends it within seconds of the scheduled time, with no tokens and nothing to host.
             </p>
             <div className="mt-10 flex animate-rise flex-wrap items-center justify-center gap-3 [animation-delay:580ms]">
               <ButtonLink href={installUrl()} variant="primary" size="lg" className="btn-glow"><GitHubMark className="size-4" />Install with GitHub</ButtonLink>
               <ButtonLink href="#how-it-works" size="lg" className="group">See how it works <span aria-hidden="true" className="transition group-hover:translate-x-0.5">→</span></ButtonLink>
             </div>
+            <Link href="/docs/security" className="mt-4 animate-rise text-sm/6 text-zinc-400 [animation-delay:620ms] hover:text-white">What Cronkick can access →</Link>
             <div className="mt-16 w-full animate-rise [animation-delay:720ms] sm:mt-20"><MarkerCard /></div>
             <dl className="mt-16 grid w-full max-w-3xl animate-rise divide-white/10 [animation-delay:900ms] max-sm:divide-y sm:mt-20 sm:grid-cols-3 sm:divide-x">
-              {[['≤ 30 s', 'first trigger, p99 target'], ['0 tokens', 'to create, paste or rotate'], ['Every slot', 'recorded with its result']].map(([v, k]) => (
+              {[['≤ 30 s', 'target for the first send'], ['0 tokens', 'to create, paste or rotate'], ['1 comment', 'in your workflow file']].map(([v, k]) => (
                 <div key={v} className="flex flex-col-reverse py-4 sm:px-6">
                   <dt className="mt-1 text-sm/6 text-zinc-500">{k}</dt>
                   <dd className="font-mono text-2xl font-medium tracking-tight">{v}</dd>
@@ -99,7 +91,7 @@ export default async function Home() {
         <section className="py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="The problem" title="GitHub’s scheduler is best effort. Your jobs aren’t.">
-              <p>GitHub queues scheduled runs behind everything else and drops them under load. Same schedule, same day: here is the difference. <a href="/lateness" className="font-medium text-white hover:underline">See live numbers →</a></p>
+              <p>GitHub’s own docs say scheduled runs can be delayed at busy times, and some are dropped. Below is an illustration, not measured data. <a href="/lateness" className="font-medium text-white hover:underline">See what we’ve measured →</a></p>
             </SplitHeading>
             <div className="mt-14"><TimelineCompare /></div>
           </div>
@@ -108,12 +100,11 @@ export default async function Home() {
         {/* Dashboard: tilts flat as it scrolls in */}
         <section className="border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
-            <SplitHeading eyebrow="The dashboard" title="Every run, on one screen.">
-              <p>Each workflow gets a strip of its recent slots, its on-time rate and its next run. Open a workflow for the full history.</p>
+            <SplitHeading eyebrow="The dashboard" title="Each run, on one screen.">
+              <p>Each schedule gets a strip of its recent runs and a count of how many were sent within 30 s. Open a workflow for the full history.</p>
             </SplitHeading>
             <div className="reveal-tilt relative mt-14">
               <AppFrame url="cronkick.xyz/dashboard"><DashboardShot /></AppFrame>
-              <FloatCard className="absolute -right-4 -bottom-8 transition duration-300 hover:-translate-y-1 max-lg:hidden"><EventCard /></FloatCard>
             </div>
           </div>
         </section>
@@ -121,17 +112,15 @@ export default async function Home() {
         {/* Bento */}
         <section className="border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
-            <SplitHeading eyebrow="Built for cron" title="Every slot accounted for.">
-              <p>Not a cron bolted onto a webhook tool. Cronkick knows what was due, what it sent, what GitHub said, and how the run ended.</p>
+            <SplitHeading eyebrow="Built for cron" title="What was due, and what was sent.">
+              <p>Cronkick records what was due, what it sent, what GitHub said, and how the run ended.</p>
             </SplitHeading>
             <div className="mt-14 grid gap-4 lg:grid-cols-3">
-              <BentoCard className="lg:col-span-2" title="A row for every run" body="When it was due, when we fired it, GitHub’s answer, and whether the run passed. Missed runs are rows too, not gaps." visual={<RunTableVignette />} />
-              <BentoCard title="No personal access token" body="Install the GitHub App. GitHub issues hour-long tokens scoped to Actions; there is nothing to paste or rotate." visual={<PermissionsVignette />} />
-              <BentoCard title="Your repo stays the source of truth" body="The schedule is a comment in your workflow file. Edit it, push, and Cronkick picks it up." visual={<DiffVignette />} />
-              <BentoCard className="lg:col-span-2" title="Never late, never twice" body="Failed requests retry until the slot’s deadline, then expire instead of running late. A request with an unclear outcome is never resent." visual={<LifecycleVignette />} />
-              <BentoCard title="Alerts that mean something" body="Email when a run is missed, unclear or fails. Not when GitHub is merely slow to start a runner." visual={<AlertVignette />} />
-              <BentoCard title="Safe to switch" body="Before turning a workflow on, Cronkick flags anything that behaves differently when dispatched." visual={<CompatVignette />} />
-              <BentoCard title="See the trend" body="Runs per day, split into on time, late and missed, for every workflow." visual={<ChartVignette />} />
+              <BentoCard className="lg:row-span-2" title="Your repo stays the source of truth" body="The schedule is a comment in your workflow file. Edit it, push, and Cronkick picks it up." visual={<DiffVignette />} />
+              <BentoCard title="A row for each planned run" body="When it was due, when Cronkick sent it, GitHub’s answer, and the job’s result. Runs Cronkick didn’t send show up too, with the reason. If Cronkick itself is down, the gap shows as an outage window." />
+              <BentoCard title="Retries with a deadline" body="If GitHub is throttling or erroring, Cronkick retries until the slot’s deadline, then skips it rather than run it late. If it can’t tell whether GitHub got the request, it doesn’t resend." />
+              <BentoCard title="No personal access token" body="Install the GitHub App. GitHub issues tokens that last an hour and cover only the repositories you pick. There is nothing to paste or rotate." />
+              <BentoCard title="Checks before switching" body="Before turning a workflow on, Cronkick flags the common breakages: a leftover schedule:, a missing workflow_dispatch:, required inputs, and steps that read the schedule event." />
             </div>
           </div>
         </section>
@@ -140,13 +129,13 @@ export default async function Home() {
         <section id="how-it-works" className="scroll-mt-16 border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="Setup" title="Two minutes, three steps.">
-              <p>No SDK, no agent, no dashboard to configure. If it runs on GitHub Actions today, it runs on time with Cronkick.</p>
+              <p>No SDK, no agent, no dashboard to configure. Your jobs keep running on GitHub, on your runners.</p>
             </SplitHeading>
             <ol role="list" className="mt-14 grid gap-x-8 gap-y-10 lg:grid-cols-3">
               {[
-                ['01', 'Install the GitHub App', <>Pick the repositories. Cronkick asks for Actions write and Contents read.</>],
+                ['01', 'Install the GitHub App', <>Pick the repositories. Cronkick asks for Actions write and Contents read. <Link href="/docs/security" className="font-medium text-white hover:underline">What Cronkick can access →</Link></>],
                 ['02', 'Swap the trigger', <>Replace <Code>schedule:</Code> with <Code>workflow_dispatch:</Code> and a <Code># cronkick</Code> comment holding the same cron.</>],
-                ['03', 'Push', <>Cronkick reads the file on push and starts firing on the next slot. Every run shows up in your dashboard.</>],
+                ['03', 'Push', <>Cronkick reads the file on push and sends the workflow at its next scheduled time. Each run shows up in your dashboard.</>],
               ].map(([n, t, d]) => (
                 <li key={n as string} className="reveal group border-t border-white/10 pt-6 transition-colors hover:border-brand-500/60">
                   <p className="font-mono text-sm/6 text-zinc-500 transition-colors group-hover:text-brand-400">{n}</p>
@@ -195,16 +184,13 @@ export default async function Home() {
         <section id="pricing" className="scroll-mt-16 border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="Pricing" title="Simple pricing. No overage charges, ever.">
-              <p>At your plan’s limit, extra schedules pause and we email you. Nothing is charged for going over.</p>
+              <p>At your plan’s limit, extra schedules pause, and we email you if you’ve added an alert address in Settings. Nothing is charged for going over.</p>
             </SplitHeading>
             <div className="mt-14 grid gap-4 md:grid-cols-2">
               {plans.map((p) => (
-                <div key={p.name} className={`reveal flex flex-col justify-between rounded-2xl p-8 transition duration-300 hover:-translate-y-1 ${p.badge ? 'border-spin shadow-[0_20px_80px_-30px_rgb(255_176_32/0.35)]' : 'bg-zinc-900/50 inset-ring inset-ring-white/10 hover:inset-ring-white/20'}`}>
+                <div key={p.name} className={`reveal flex flex-col justify-between rounded-2xl p-8 transition duration-300 hover:-translate-y-1 ${p.featured ? 'border-spin shadow-[0_20px_80px_-30px_rgb(255_176_32/0.35)]' : 'bg-zinc-900/50 inset-ring inset-ring-white/10 hover:inset-ring-white/20'}`}>
                   <div>
-                    <div className="flex items-center justify-between gap-x-4">
-                      <h3 className="text-lg font-semibold">{p.name}</h3>
-                      {p.badge && <Badge tone="amber">{p.badge}</Badge>}
-                    </div>
+                    <h3 className="text-lg font-semibold">{p.name}</h3>
                     <p className="mt-6 flex items-baseline gap-x-1"><span className="text-5xl font-semibold tracking-tight tabular-nums">{p.price}</span><span className="text-sm/6 text-zinc-400">/month</span></p>
                     <p className="mt-2 text-base/7 text-zinc-400 sm:text-sm/6">{p.note}</p>
                     <ul role="list" className="mt-8 space-y-3 border-t border-white/5 pt-8 text-base/7 text-zinc-300 sm:text-sm/6">
@@ -213,7 +199,7 @@ export default async function Home() {
                   </div>
                   <div className="mt-10">
                     {/* ponytail: Pro is set by hand until checkout (Polar/Dodo) exists; its CTA emails us. */}
-                    <ButtonLink href={p.href} variant={p.badge ? 'primary' : 'secondary'} className={`w-full ${p.badge ? 'btn-glow' : ''}`}>{p.github && <GitHubMark className="size-4" />}{p.cta}</ButtonLink>
+                    <ButtonLink href={p.href} variant={p.featured ? 'primary' : 'secondary'} className={`w-full ${p.featured ? 'btn-glow' : ''}`}>{p.github && <GitHubMark className="size-4" />}{p.cta}</ButtonLink>
                   </div>
                 </div>
               ))}
@@ -254,6 +240,7 @@ export default async function Home() {
               <ButtonLink href={installUrl()} variant="primary" size="lg" className="btn-glow"><GitHubMark className="size-4" />Install with GitHub</ButtonLink>
               <ButtonLink href="/lateness" variant="ghost" size="lg">See GitHub’s lateness <span aria-hidden="true">→</span></ButtonLink>
             </div>
+            <Link href="/docs/security" className="mt-4 inline-block text-sm/6 text-zinc-400 hover:text-white">What Cronkick can access →</Link>
           </div>
         </section>
       </main>

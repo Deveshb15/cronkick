@@ -3,16 +3,18 @@ import { CheckIcon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import { useState } from 'react';
 import { humanCron } from '@/lib/live';
-import { Countdown } from './live';
+import { Time } from './live';
+import { AlertHint, ButtonLink } from './ui';
 
 type Found = { workflowId: number; workflow: string; repo: string; due: string } | null;
 
 /**
- * Setup until the first kick: pick a cadence, copy one line, push. Step 3 watches live and flips to the found
- * schedule (with a countdown to its first kick) as soon as Cronkick sees the push, without a reload.
+ * Setup until a slot first comes due: pick a cadence, copy one line, push. Step 3 watches live and flips to the
+ * configured schedule (with its first due time) as soon as Cronkick sees the push, without a reload.
+ * With no repositories selected, the page points at choosing them first.
  */
-export function FirstRun({ installationId, repos, manageUrl, floor, found, candidates }: {
-  installationId: number; repos: string[]; manageUrl: string; floor: number; found: Found; candidates: number;
+export function FirstRun({ installationId, repos, manageUrl, floor, found, candidates, alerts }: {
+  installationId: number; repos: string[]; manageUrl: string; floor: number; found: Found; candidates: number; alerts: boolean;
 }) {
   const presets = [
     { cron: `*/${Math.max(15, floor)} * * * *`, label: `Every ${Math.max(15, floor)} min` },
@@ -31,8 +33,18 @@ export function FirstRun({ installationId, repos, manageUrl, floor, found, candi
       <div aria-hidden="true" className="hero-glow absolute inset-0 -z-10" />
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-10">
         <p className="font-mono text-xs/5 tracking-wider text-brand-400 uppercase">Getting started</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">Schedule your first workflow</h1>
-        <p className="mt-3 text-zinc-400">Three steps. This page updates on its own as you go.</p>
+        {repos.length ? (
+          <>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">Schedule your first workflow</h1>
+            <p className="mt-3 text-zinc-400">Three steps. This page updates on its own as you go.</p>
+          </>
+        ) : (
+          <>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">Choose repositories for Cronkick</h1>
+            <p className="mt-3 text-zinc-400">Cronkick can’t see any repositories yet. Pick the ones with workflows to schedule, then add one line.</p>
+            <ButtonLink href={manageUrl} variant="primary" size="lg" className="mt-6">Choose repositories on GitHub ↗</ButtonLink>
+          </>
+        )}
         <ol role="list" className="mt-10 space-y-8">
           <li className="flex gap-4">
             {repos.length ? done : step(1, true)}
@@ -78,9 +90,11 @@ export function FirstRun({ installationId, repos, manageUrl, floor, found, candi
               <p className="font-medium">Push it to your default branch</p>
               {found ? (
                 <div className="mt-3 flex animate-pop flex-wrap items-center gap-3 rounded-xl bg-emerald-400/[0.06] px-4 py-3 text-sm/6 inset-ring inset-ring-emerald-400/25">
-                  <span>Found <b className="font-medium">{found.workflow}</b> in {found.repo.split('/')[1]}. First kick in <Countdown to={found.due} className="font-mono text-brand-400" /></span>
+                  <span>Configured <b className="font-medium">{found.workflow}</b> in {found.repo.split('/')[1]}. First run <Time iso={found.due} className="font-mono text-brand-400" /> <span className="text-zinc-500">({found.due.slice(0, 16).replace('T', ' ')} UTC)</span></span>
                   <Link href={`/dashboard/${installationId}/workflows/${found.workflowId}`} className="ml-auto text-xs/5 font-medium text-brand-400 hover:text-brand-300">View schedule →</Link>
                 </div>
+              ) : !repos.length ? (
+                <p className="mt-3 text-sm/6 text-zinc-400">Choose repositories first; Cronkick watches them for the push.</p>
               ) : (
                 <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-3 text-sm/6 text-zinc-400 inset-ring inset-ring-white/10">
                   <svg aria-hidden="true" className="size-4 animate-spin text-brand-400" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity=".25" strokeWidth="3" /><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
@@ -90,6 +104,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, found, candi
             </div>
           </li>
         </ol>
+        {!alerts && <p className="mt-10 text-sm/6 text-zinc-400"><AlertHint id={installationId} /></p>}
       </div>
     </section>
   );
