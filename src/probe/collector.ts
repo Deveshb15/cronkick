@@ -98,7 +98,7 @@ export async function collectProbes(db: Db, repos: string[], token: string, fetc
  * times while GitHub had it switched off must never count as runs it skipped. A failed read keeps the last state.
  */
 async function recordWorkflowStates(db: Db, repo: string, headers: Record<string, string>, fetchFn: typeof fetch, now: Date): Promise<void> {
-  let list: { path: string; state: string }[];
+  let list: { path: string; state: string; created_at?: string }[];
   try {
     const res = await fetchFn(`https://api.github.com/repos/${repo}/actions/workflows?per_page=100`, { headers, signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
@@ -108,13 +108,14 @@ async function recordWorkflowStates(db: Db, repo: string, headers: Record<string
     return;
   }
   for (const wf of PROBE_WORKFLOWS) {
-    const state = list.find((w) => w.path === wf.file)?.state ?? 'missing';
+    const found = list.find((w) => w.path === wf.file);
+    const state = found?.state ?? 'missing';
     const prev = (await db.query('SELECT state FROM probe_workflows WHERE repo = $1 AND path = $2', [repo, wf.file])).rows[0]?.state;
     if (prev && prev !== state) await db.query('DELETE FROM probe_runs WHERE repo = $1 AND workflow = $2', [repo, wf.file]);
     await db.query(
-      `INSERT INTO probe_workflows (repo, path, state, checked_at) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (repo, path) DO UPDATE SET state = EXCLUDED.state, checked_at = EXCLUDED.checked_at`,
-      [repo, wf.file, state, now],
+      `INSERT INTO probe_workflows (repo, path, state, checked_at, created_at) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (repo, path) DO UPDATE SET state = EXCLUDED.state, checked_at = EXCLUDED.checked_at, created_at = EXCLUDED.created_at`,
+      [repo, wf.file, state, now, found?.created_at ? new Date(found.created_at) : null],
     );
   }
 }
@@ -202,9 +203,11 @@ const OFF: Record<string, string> = {
 };
 
 /**
- * Each probe cron, GitHub's `schedule:` against its Cronkick twin, over the time both were measured: from the later of
- * the two sides' first recorded runs (and the repo's sample start) to the last complete check less the grace hour.
- * The same rule for both sides, so neither is shown over a stretch the other wasn't measured.
+ * Each probe cron, GitHub's `schedule:` against its Cronkick twin, over the time both were measured. The window starts
+ * an hour after both workflow files were added (time for either to start running), or at the repo's sample start if
+ * later, and ends at the last complete check less the grace hour. From then every scheduled minute counts for both
+ * sides alike, so a side that doesn't start running is counted as not running. Without GitHub's creation dates (older
+ * rows) the window starts at the later of the two sides' first runs.
  */
 export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Promise<Pair[]> {
   const crons = [...new Set(PROBE_WORKFLOWS.map((w) => w.cron))];
@@ -219,20 +222,28 @@ export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Pro
     const ghDelays: number[] = [], ckDelays: number[] = [];
     let expected = 0;
     for (const repo of r.repos.filter((x) => x.until)) {
-      const states = new Map((await db.query('SELECT path, state FROM probe_workflows WHERE repo = $1', [repo.repo])).rows.map((x) => [x.path, x.state]));
-      const off = [gh, ck].map((w) => ({ w, why: OFF[states.get(w.file)] })).find((x) => x.why);
+      const wfs = new Map((await db.query('SELECT path, state, created_at FROM probe_workflows WHERE repo = $1', [repo.repo])).rows.map((x) => [x.path, x]));
+      const off = [gh, ck].map((w) => ({ w, why: OFF[wfs.get(w.file)?.state] })).find((x) => x.why);
       if (off) { Object.assign(pair, { state: 'paused', repo: repo.repo, reason: `The ${off.w.via === 'github' ? 'GitHub schedule:' : 'Cronkick'} workflow was ${off.why}, so this pair isn’t counted until it runs again` }); break; }
-      const firsts = new Map((await db.query(
-        'SELECT workflow, min(due_at) AS first FROM probe_runs WHERE repo = $1 AND workflow = ANY($2) AND due_at > $3 AND due_at <= $4 GROUP BY workflow',
-        [repo.repo, [gh.file, ck.file], new Date(now.getTime() - 7 * 24 * H), repo.until],
-      )).rows.map((x) => [x.workflow, new Date(x.first)]));
-      if (!firsts.has(gh.file) || !firsts.has(ck.file)) {
-        pair.reason ??= !firsts.has(ck.file) ? 'The Cronkick twin has no runs yet' : 'GitHub hasn’t started this schedule yet';
-        continue;
-      }
+      if (wfs.get(ck.file)?.state === 'missing') { pair.reason ??= 'The Cronkick twin isn’t in the repo yet'; continue; }
       const sampleFrom = (await db.query('SELECT sample_from FROM probe_health WHERE repo = $1', [repo.repo])).rows[0]?.sample_from as Date | null;
-      const from = new Date(Math.max(firsts.get(gh.file)!.getTime(), firsts.get(ck.file)!.getTime(), sampleFrom?.getTime() ?? 0));
+      const added = [gh, ck].map((w) => wfs.get(w.file)?.created_at as Date | null | undefined);
+      let start: number;
+      if (added.every((d) => d)) start = Math.max(...added.map((d) => d!.getTime() + GRACE_MS));
+      else {
+        const firsts = new Map((await db.query(
+          'SELECT workflow, min(due_at) AS first FROM probe_runs WHERE repo = $1 AND workflow = ANY($2) AND due_at > $3 AND due_at <= $4 GROUP BY workflow',
+          [repo.repo, [gh.file, ck.file], new Date(now.getTime() - 7 * 24 * H), repo.until],
+        )).rows.map((x) => [x.workflow, new Date(x.first).getTime()]));
+        if (!firsts.has(gh.file) || !firsts.has(ck.file)) {
+          pair.reason ??= !firsts.has(ck.file) ? 'The Cronkick twin has no runs yet' : 'GitHub hasn’t started this schedule yet';
+          continue;
+        }
+        start = Math.max(firsts.get(gh.file)!, firsts.get(ck.file)!);
+      }
+      const from = new Date(Math.max(start, sampleFrom?.getTime() ?? 0, now.getTime() - 7 * 24 * H));
       const until = repo.until!;
+      if (until <= from) { pair.reason ??= `Measuring starts ${from.toISOString().slice(11, 16)} UTC, an hour after both workflows were added`; continue; }
       const dues = dueTimes(cron, from, until);
       const { rows } = await db.query(
         'SELECT workflow, due_at, started_at FROM probe_runs WHERE repo = $1 AND workflow = ANY($2) AND due_at >= $3 AND due_at <= $4',
@@ -251,8 +262,9 @@ export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Pro
     if (pair.state !== 'paused' && pair.repo) {
       pair.github.stats = lateness(ghDelays, expected);
       pair.cronkick.stats = lateness(ckDelays, expected);
+      // Early numbers are shown, marked early, rather than an empty box.
       if (pair.hours >= PAIR_MIN_HOURS) Object.assign(pair, { state: 'compared', reason: null });
-      else pair.reason = `Both sides measured for ${Math.max(0, Math.floor(pair.hours))} h so far; numbers appear after ${PAIR_MIN_HOURS} h`;
+      else pair.reason = `${Math.max(0, Math.floor(pair.hours))} h measured so far; these numbers settle after ${PAIR_MIN_HOURS} h`;
     }
     out.push(pair);
   }
