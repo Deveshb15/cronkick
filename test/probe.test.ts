@@ -134,10 +134,17 @@ describe('collector health and report', () => {
     expect(p.cronkick.stats).toMatchObject({ expected: 14, ran: 14 });
   });
 
-  test('pairs: before an hour has passed since the files were added, it says when measuring starts', async () => {
+  test('pairs: before the first counted minute is an hour old, it has no numbers but knows when measuring starts', async () => {
     const p = await pairDb('21:00:00', [], { [GH]: 'active', [CK]: 'active' }, null, '19:45:00');
-    expect(p).toMatchObject({ state: 'collecting', reason: 'Measuring starts 20:45 UTC, an hour after both workflows were added' });
+    expect(p).toMatchObject({ state: 'collecting', startAt: at('20:45:00'), repo: 'acme/p', isPublic: true });
     expect(p.github.stats.expected).toBe(0);
+  });
+
+  test('pairs: a Cronkick twin added to a repo with older GitHub probes starts after 10 minutes, not an hour', async () => {
+    await db.query('INSERT INTO probe_workflows (repo, path, state, checked_at, created_at) VALUES ($1, $2, $3, $4, $5)', ['acme/p', CK, 'active', at('21:00:00'), at('12:52:00')]);
+    const p = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600), ...hourly(CK, 13, 20, 1)], { [GH]: 'active' }, null, '01:00:00');
+    expect(p).toMatchObject({ state: 'compared', from: at('13:02:00') });
+    expect(p.cronkick.stats).toMatchObject({ expected: 7, ran: 7 }); // 14:00 .. 20:00
   });
 
   test('pairs: a twin that is not in the repo yet says so', async () => {

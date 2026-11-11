@@ -122,5 +122,6 @@ export function evidenceLine(e: Evidence, now: Date): { text: string; bad: boole
 
 /** A probe pair as plain data for the client charts (dates as ISO strings). */
 export const pairView = (p: Pair) => ({
-  ...p, from: p.from?.toISOString() ?? null, until: p.until?.toISOString() ?? null, ticks: p.ticks.map((t) => ({ ...t, due: t.due.toISOString() })),
+  ...p, from: p.from?.toISOString() ?? null, until: p.until?.toISOString() ?? null, startAt: p.startAt?.toISOString() ?? null,
+  sampleFrom: p.sampleFrom ? new Date(p.sampleFrom).toISOString() : null, ticks: p.ticks.map((t) => ({ ...t, due: t.due.toISOString() })),
 });

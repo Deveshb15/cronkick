@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { fmtUtc } from '@/lib/format';
 import { fmtDuration, humanCron } from '@/lib/live';
+import { Time } from './live';
 
 const POSITIONS = 96;
 const num = (n: number) => n.toLocaleString('en-US');
@@ -13,6 +14,7 @@ type Stats = { expected: number; ran: number; p50Sec: number | null; p95Sec: num
 export type PairView = {
   cron: string; state: 'compared' | 'collecting' | 'paused'; reason: string | null;
   repo: string | null; isPublic: boolean; hours: number; from: string | null;
+  startAt: string | null; sampleFrom: string | null;
   github: { file: string; stats: Stats }; cronkick: { file: string; stats: Stats };
   ticks: { due: string; github: number | null; cronkick: number | null }[];
 };
@@ -48,6 +50,50 @@ function Dots({ p, side }: { p: PairView; side: 'github' | 'cronkick' }) {
       {AXIS.map(([s]) => <span key={s} aria-hidden="true" className="absolute inset-y-0 w-px bg-white/5" style={{ left: x(s) }} />)}
       {/* `.tip` sets position: relative, so absolute! keeps the dots placed. */}
       {ran.map((t, i) => <span key={t.due} aria-hidden="true" data-tip={say(t.due, t[side], who)} className={`tip absolute! block size-2.5 -translate-1/2 rounded-full ring-1 ring-ink hover:z-10 hover:scale-150 ${tone(t[side])}`} style={{ left: x(t[side]!), top: y(i) }} />)}
+    </div>
+  );
+}
+
+const H = 3_600_000;
+const plus = (iso: string, ms: number) => new Date(Date.parse(iso) + ms).toISOString();
+/**
+ * When numbers appear. A scheduled minute only counts once GitHub has had an hour to create its run, and the probes
+ * are read every 5 minutes, so the first numbers come about 1 h 5 min after measuring starts.
+ */
+const firstAt = (start: string) => plus(start, H + 5 * 60_000);
+const fullAt = (start: string, hours: number) => plus(start, (hours + 1) * H + 5 * 60_000);
+
+/** Where a pair is before it has numbers: the steps from the repo going public to the full comparison. */
+function Timeline({ p, now }: { p: PairView; now: number }) {
+  const steps: [string, string | null][] = [
+    [p.isPublic ? 'Probe repo went public' : 'Sample started', p.sampleFrom],
+    ['Measuring from', p.startAt],
+    ['First numbers', p.startAt && firstAt(p.startAt)],
+    ['Full comparison', p.startAt && fullAt(p.startAt, 6)],
+  ];
+  return (
+    <div className="rounded-xl bg-white/[0.02] p-4 inset-ring inset-ring-white/5 sm:p-5">
+      <ol role="list" className="grid gap-4 @2xl:grid-cols-4 @2xl:gap-0">
+        {steps.filter(([, at]) => at).map(([label, at], i, all) => {
+          const done = Date.parse(at!) <= now;
+          const current = !done && (i === 0 || Date.parse(all[i - 1][1]!) <= now);
+          return (
+            <li key={label} className="relative flex gap-3 @2xl:flex-col @2xl:gap-2 @2xl:pr-4">
+              {i < all.length - 1 && <span aria-hidden="true" className={`absolute top-3 left-3 hidden h-px w-full @2xl:block ${done ? 'bg-emerald-400/50' : 'bg-white/10'}`} />}
+              <span aria-hidden="true" className={`relative grid size-6 shrink-0 place-items-center rounded-full text-xs ${done ? 'bg-emerald-400/15 text-emerald-300' : current ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/40' : 'bg-white/5 text-zinc-500'}`}>
+                {done ? '✓' : current ? <span className="size-1.5 animate-pulse rounded-full bg-brand-400" /> : i + 1}
+              </span>
+              <span>
+                <span className={`block text-sm/6 font-medium ${done ? 'text-zinc-300' : 'text-white'}`}>{label}</span>
+                <span className="block text-sm/6 text-zinc-400 tabular-nums">{done ? '' : 'about '}<Time iso={at!} date /></span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-4 border-t border-white/5 pt-3 text-[13px]/5 text-pretty text-zinc-400">
+        A scheduled minute only counts once GitHub has had an hour to create its run, so the numbers trail the clock by about an hour. Both sides start together and are counted over the same minutes.
+      </p>
     </div>
   );
 }
@@ -91,13 +137,16 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
   if (!pairs.length) return null;
   const p = pairs[Math.min(pick, pairs.length - 1)];
   const runs = (file: string) => `https://github.com/${p.repo}/actions/workflows/${file.split('/').pop()}`;
+  const now = Date.now();
+  const link = 'font-medium text-white underline decoration-white/30 underline-offset-2 hover:decoration-white';
   return (
     <div className="@container space-y-8 rounded-2xl bg-white/[0.03] p-5 text-left inset-ring inset-ring-white/10 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base/7 font-semibold text-white">The same workflow, run two ways</h2>
           <p className="text-sm/6 text-pretty text-zinc-400">
-            {humanCron(p.cron)} in one repo: once on GitHub’s own <code className="font-mono">schedule:</code>, once triggered by Cronkick. Both read from GitHub’s run list.
+            {humanCron(p.cron)}, once on GitHub’s own <code className="font-mono">schedule:</code> and once triggered by Cronkick, in{' '}
+            {p.isPublic && p.repo ? <a href={`https://github.com/${p.repo}`} className={link}>{p.repo}</a> : 'one repository'}.
             {p.github.stats.expected > 0 && ` ${Math.floor(p.hours)}\u00a0h measured.`}
           </p>
         </div>
@@ -111,11 +160,17 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
         )}
       </div>
 
-      {p.reason && (
+      {p.state === 'paused' || (!p.startAt && p.reason) ? (
         <p className="rounded-xl bg-white/[0.02] px-4 py-3 text-sm/6 text-zinc-300 inset-ring inset-ring-white/5">
-          <span className="font-medium text-white">{p.state === 'paused' ? 'Paused.' : p.github.stats.expected ? 'Early.' : 'Starting.'}</span> {p.reason}.
+          <span className="font-medium text-white">{p.state === 'paused' ? 'Paused.' : 'Not started.'}</span> {p.reason}.
         </p>
-      )}
+      ) : p.github.stats.expected === 0 && p.startAt ? (
+        <Timeline p={p} now={now} />
+      ) : p.state === 'collecting' && p.startAt ? (
+        <p className="rounded-xl bg-brand-500/[0.06] px-4 py-3 text-sm/6 text-zinc-300 inset-ring inset-ring-brand-500/20">
+          <span className="font-medium text-brand-300">Early numbers.</span> {Math.floor(p.hours)}{'\u00a0'}h measured so far; the full comparison is ready around <Time iso={fullAt(p.startAt, 6)} date className="text-white" />.
+        </p>
+      ) : null}
       {p.state !== 'paused' && p.github.stats.expected > 0 && (
         <>
           <Numbers p={p} />
@@ -153,14 +208,15 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
             </div>
           )}
 
-          {p.isPublic && p.repo && (
-            <p className="flex flex-wrap gap-x-5 gap-y-2 text-sm/6">
-              <span className="text-zinc-400">Check it yourself:</span>
-              <a href={runs(p.github.file)} className="font-medium text-white underline decoration-white/30 underline-offset-2 hover:decoration-white">GitHub’s runs ↗</a>
-              <a href={runs(p.cronkick.file)} className="font-medium text-white underline decoration-white/30 underline-offset-2 hover:decoration-white">Cronkick’s runs ↗</a>
-            </p>
-          )}
         </>
+      )}
+
+      {p.isPublic && p.repo && p.state !== 'paused' && (
+        <p className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/5 pt-4 text-sm/6">
+          <span className="text-zinc-400">Check it yourself on GitHub:</span>
+          <a href={runs(p.github.file)} className={link}>{p.github.file.split('/').pop()} runs ↗</a>
+          <a href={runs(p.cronkick.file)} className={link}>{p.cronkick.file.split('/').pop()} runs ↗</a>
+        </p>
       )}
     </div>
   );
