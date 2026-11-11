@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { ProbeCharts } from '@/components/probe-charts';
 import { SiteFooter, SiteHeader } from '@/components/site';
 import { ButtonLink, Code, Eyebrow } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtUtc, installUrl, probeSample } from '@/lib/format';
 import { probeRepos } from '../../../src/config.ts';
-import { CAP_ERROR, probeReport } from '../../../src/probe/collector.ts';
+import { CAP_ERROR, probeReport, probeStrips } from '../../../src/probe/collector.ts';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'How late are GitHub Actions scheduled workflows?' };
@@ -16,6 +17,11 @@ export default async function Lateness() {
   const now = new Date();
   const report = await probeReport(db, probeRepos(), now);
   const any = report.contributing > 0;
+  const strips = any ? await probeStrips(db, report, now).catch(() => []) : [];
+  const cohorts = report.schedules.map((s) => ({
+    cron: s.cron, expected: s.stats.expected, ran: s.stats.ran, p50Sec: s.stats.p50Sec, p95Sec: s.stats.p95Sec,
+    ticks: (strips.find((x) => x.cron === s.cron)?.ticks ?? []).map((t) => ({ due: t.due.toISOString(), delaySec: t.delaySec })),
+  }));
   return (
     <>
       <SiteHeader />
@@ -40,6 +46,7 @@ export default async function Lateness() {
             </ul>
             <p className="mt-3 text-xs/5 text-zinc-500">A failed or partial check is never counted as a miss: time after a repo’s last complete check isn’t counted. Each check reads at most 1,000 runs per repo, so if the collector is down for more than about 3 days that repo stays at its last complete check (“{CAP_ERROR}”).</p>
           </div>
+          {any && strips.length > 0 && <div className="mx-auto mt-10 max-w-5xl"><ProbeCharts cohorts={cohorts} /></div>}
           {any ? (
             <div className="scroll-fade mt-12 -mx-4 -my-2 overflow-x-auto whitespace-nowrap sm:-mx-6 lg:-mx-8">
               <div className="inline-block min-w-full px-4 py-2 align-middle sm:px-6 lg:px-8">

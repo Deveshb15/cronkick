@@ -122,6 +122,8 @@ for (const w of globex.filter((x) => x.id >= 2004)) await history(2, w, ago(7 * 
 // 3. initech (Free): just installed; one nightly schedule, nothing has run yet.
 const initech: Wf[] = [{ id: 3001, repo: 301, path: '.github/workflows/nightly.yml', name: 'Nightly build', crons: [['30 3 * * *', 'Europe/Berlin']] }];
 await account(3, 'initech', 'free', ago(20 * 60_000), [[301, 'api']], initech);
+await db.query(`INSERT INTO workflows (id, repo_id, path, name, suggested_diff) VALUES (3002, 301, '.github/workflows/docs.yml', 'Publish docs', $1)`,
+  ['  # cronkick: "0 6 * * *"']);
 for (const p of planSlots(3001, [{ cron: '30 3 * * *', tz: 'Europe/Berlin' }], now, new Date(now.getTime() + 2 * H))) await insertSlot(3, initech[0], p, { state: 'pending' });
 
 // 4. umbrella (Pro): a quiet account whose only news is the outage.
@@ -139,13 +141,34 @@ const solo: Wf[] = [{ id: 5001, repo: 501, path: '.github/workflows/sync.yml', n
 await account(5, 'solo', 'free', ago(26 * 24 * H), [[501, 'side-project']], solo);
 await history(5, solo[0], ago(26 * 24 * H), (_, i) => (i === 1300 ? { delayS: 36 } : i % 400 === 77 ? { conclusion: 'failure', runS: 18 } : {}));
 
+// 6. you (Free): a day old, one schedule, and the two workflows it still runs on GitHub's own `schedule:`.
+const you: Wf[] = [{ id: 6001, repo: 601, path: '.github/workflows/cronkick.yml', name: 'cronkick', crons: [['*/15 * * * *']] }];
+await account(6, 'you', 'free', ago(20 * H), [[601, 'cronkick-probe-a']], you);
+await db.query(`INSERT INTO workflows (id, repo_id, path, name, suggested_diff) VALUES
+  (6002, 601, '.github/workflows/every-5.yml', 'every-5', $1), (6003, 601, '.github/workflows/hourly.yml', 'hourly', $2)`,
+  ['  # cronkick: "*/5 * * * *"', '  # cronkick: "0 * * * *"']);
+await history(6, you[0], ago(19 * H), () => ({}));
+
 // The planner is healthy, so /healthz/dispatch reads ok.
 await db.query('UPDATE planner SET planned_until = $1', [new Date(now.getTime() + 2 * H)]);
 
 // /lateness: two probe repos, a week of GitHub's own scheduled runs (late by a few minutes, some dropped).
+// DEMO_PROBES=thin instead: one private repo, 16 h old, where GitHub ran almost nothing (what production saw first).
 const probes = ['cronkick-probes/hourly-a', 'cronkick-probes/hourly-b'];
 let run = 1;
-for (const repo of probes) {
+if (process.env.DEMO_PROBES === 'thin') {
+  const ran: [string, string, number, number][] = [ // workflow, cron, hours ago due, seconds late
+    ['.github/workflows/every-5.yml', '*/5 * * * *', 15.5, 17], ['.github/workflows/every-5.yml', '*/5 * * * *', 11, 102],
+    ['.github/workflows/every-5.yml', '*/5 * * * *', 6.25, 240], ['.github/workflows/every-5.yml', '*/5 * * * *', 2, 95],
+    ['.github/workflows/hourly.yml', '0 * * * *', 15, 1440], ['.github/workflows/hourly.yml', '0 * * * *', 9, 3030], ['.github/workflows/hourly.yml', '0 * * * *', 4, 2580],
+  ];
+  for (const [file, cron, h, s] of ran) {
+    const step = cron.startsWith('*/5') ? 5 * 60_000 : H;
+    const due = new Date(Math.floor(ago(h * H).getTime() / step) * step);
+    await db.query('INSERT INTO probe_runs (run_id, repo, workflow, cron, due_at, started_at) VALUES ($1, $2, $3, $4, $5, $6)', [run++, probes[0], file, cron, due, new Date(due.getTime() + s * 1000)]);
+  }
+  await db.query('INSERT INTO probe_health (repo, private, last_attempt_at, last_success_at) VALUES ($1, true, $2, $2)', [probes[0], ago(3 * 60_000)]);
+} else for (const repo of probes) {
   for (const wf of [{ file: '.github/workflows/every-5.yml', cron: '*/5 * * * *', step: 5 }, { file: '.github/workflows/hourly.yml', cron: '0 * * * *', step: 60 }]) {
     for (let t = Math.ceil(ago(7 * 24 * H).getTime() / (wf.step * 60_000)) * wf.step * 60_000; t < ago(2 * H).getTime(); t += wf.step * 60_000) {
       if (rnd() < (wf.step === 5 ? 0.07 : 0.03)) continue; // GitHub dropped it
@@ -157,7 +180,7 @@ for (const repo of probes) {
   await db.query('INSERT INTO probe_health (repo, private, last_attempt_at, last_success_at) VALUES ($1, false, $2, $2)', [repo, ago(3 * 60_000)]);
 }
 
-console.log(`Seeded ${(await db.query('SELECT count(*) FROM slots')).rows[0].count} slots across 5 accounts, ${run - 1} probe runs.`);
-console.log('Accounts: 1 acme (Pro, healthy with incidents), 2 globex (Free, needs a fix), 3 initech (new), 4 umbrella (Pro, two schedules, outage window), 5 solo (Free, one schedule).');
+console.log(`Seeded ${(await db.query('SELECT count(*) FROM slots')).rows[0].count} slots across 6 accounts, ${run - 1} probe runs.`);
+console.log('Accounts: 1 acme (Pro, healthy with incidents), 2 globex (Free, needs a fix), 3 initech (new), 4 umbrella (Pro, two schedules, outage window), 5 solo (Free, one schedule), 6 you (Free, one schedule, two still on GitHub).');
 console.log(`Probe repos for /lateness: PROBE_REPOS=${probes.join(',')}`);
 await db.end();

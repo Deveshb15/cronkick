@@ -132,3 +132,26 @@ export async function probeReport(db: Db, configured: string[], now: Date): Prom
   const checkedAt = live.reduce<Date | null>((a, r) => (!a || r.lastSuccessAt! < a ? r.lastSuccessAt : a), null);
   return { configured: configured.length, contributing: live.length, repos, schedules, checkedAt };
 }
+
+/** One expected run of GitHub's own scheduler: when it was due, and how late GitHub created it (null: it never ran). */
+export type ProbeTick = { due: Date; delaySec: number | null };
+
+/**
+ * The latest `n` due times of each probe schedule in one contributing repo, with what GitHub did at each, up to that
+ * repo's last complete check (later times weren't fully examined). The counts in `probeReport` cover every repo.
+ */
+export async function probeStrips(db: Db, r: ProbeReport, now: Date, n = 96): Promise<{ cron: string; ticks: ProbeTick[] }[]> {
+  // ponytail: one repo's strip is enough to see the pattern; draw one per repo if the probes ever disagree.
+  const repo = r.repos.find((x) => x.live);
+  if (!repo?.until) return [];
+  return Promise.all(PROBE_WORKFLOWS.map(async (wf) => {
+    const { rows } = await db.query(
+      'SELECT due_at, started_at FROM probe_runs WHERE repo = $1 AND workflow = $2 AND due_at > $3 AND due_at <= $4 ORDER BY due_at',
+      [repo.repo, wf.file, new Date(now.getTime() - WINDOW_MS), repo.until],
+    );
+    if (!rows.length) return { cron: wf.cron, ticks: [] };
+    const ran = new Map(rows.map((x) => [x.due_at.getTime(), (x.started_at.getTime() - x.due_at.getTime()) / 1000]));
+    const ticks = dueTimes(wf.cron, rows[0].due_at, repo.until!).slice(-n).map((d) => ({ due: d, delaySec: ran.get(d.getTime()) ?? null }));
+    return { cron: wf.cron, ticks };
+  }));
+}

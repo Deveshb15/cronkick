@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
-import { CAP_ERROR, collectProbes, probeReport } from '../src/probe/collector.ts';
+import { CAP_ERROR, collectProbes, probeReport, probeStrips } from '../src/probe/collector.ts';
 import { probeSample } from '../web/lib/format.ts';
 import { assignRuns, lateness } from '../src/probe/stats.ts';
 import { freshDb } from './helpers.ts';
@@ -77,6 +77,14 @@ describe('collector health and report', () => {
     const hourly = r.schedules.find((s) => s.cron === '0 * * * *')!;
     expect(hourly.stats).toMatchObject({ expected: 4, ran: 4, missingShare: 0 }); // 06:00..09:00; nothing after 10:00 - 1 h counts
     expect(r.repos[0]).toMatchObject({ from: at('06:00:00'), until: at('09:00:00'), error: 'GitHub returned 502' });
+  });
+
+  test('strips: every due time up to the last complete check, with how late GitHub ran it or null', async () => {
+    await collectProbes(db, ['acme/p'], 't', github([[run(2, '08:01:30'), run(1, '06:01:00')]]).fn, at('10:00:00'));
+    const strips = await probeStrips(db, await probeReport(db, ['acme/p'], at('10:00:00')), at('10:00:00'));
+    expect(strips.find((x) => x.cron === '0 * * * *')!.ticks).toEqual([ // until 10:00 - 1 h; 07:00 and 09:00 never ran
+      { due: at('06:00:00'), delaySec: 60 }, { due: at('07:00:00'), delaySec: null }, { due: at('08:00:00'), delaySec: 90 }, { due: at('09:00:00'), delaySec: null },
+    ]);
   });
 
   test('before any complete check, a partial attempt never moves the boundary, so a retry cannot fake completeness', async () => {

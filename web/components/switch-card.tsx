@@ -32,10 +32,11 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
       <summary className="flex cursor-pointer list-none items-center gap-x-3 px-4 py-3 text-sm/6 [&::-webkit-details-marker]:hidden">
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500 transition group-open/c:rotate-90" />
         <span className="font-medium">{c.name}</span>
-        <span className="min-w-0 truncate font-mono text-[13px]/5 text-zinc-400">{c.repo.split('/')[1]} · {c.path.split('/').pop()}</span>
+        <span className="min-w-0 truncate font-mono text-[13px]/5 text-zinc-400 max-sm:hidden">{c.repo.split('/')[1]} · {c.path.split('/').pop()}</span>
         {c.tooFast
           ? <span className="ml-auto shrink-0 rounded-md bg-orange-400/10 px-1.5 py-0.5 text-xs/5 font-medium text-orange-300 inset-ring inset-ring-orange-400/20">{plan === 'free' ? 'Too fast for Free' : 'Too fast for your plan'}</span>
-          : <span className="ml-auto shrink-0 font-mono text-[13px]/5 text-zinc-400">{c.cadence}</span>}
+          : <span className="ml-auto shrink-0 text-[13px]/5 text-zinc-400 max-sm:hidden">{c.cadence}</span>}
+        <span className="shrink-0 rounded-md bg-white/5 px-2.5 py-1 max-sm:ml-auto text-[13px]/5 font-medium text-zinc-100 inset-ring inset-ring-white/10 group-open/c:hidden">Move it</span>
       </summary>
       <div className="grid gap-5 border-t border-white/5 p-4 lg:grid-cols-[minmax(0,1fr)_15rem]">
         <div className="min-w-0">
@@ -92,19 +93,16 @@ export function SwitchSection({ candidates, hidden, plan, floor, hide }: {
   );
   if (!n) return <div className="px-1">{hiddenList}</div>;
   return (
-    <details className="group rounded-xl inset-ring inset-ring-white/10">
-      <summary className="flex cursor-pointer list-none items-center gap-x-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
-        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-400 transition group-open:rotate-90" />
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm/6 font-medium">{n} workflow{n === 1 ? '' : 's'} still run{n === 1 ? 's' : ''} on GitHub’s schedule</span>
-          <span className="block text-[13px]/5 text-zinc-400">GitHub’s <code className="font-mono text-zinc-300">schedule:</code> often starts late or skips runs. Moving one over is two small edits.</span>
-        </span>
-        <span className="shrink-0 rounded-lg bg-white/5 px-3 py-1.5 text-[13px]/5 font-medium text-zinc-100 inset-ring inset-ring-white/10 group-open:hidden">Review</span>
-      </summary>
-      <div className="space-y-2 px-5 pb-5">
-        {candidates.map((c, i) => <CandidateRow key={c.id} c={c} open={i === 0} plan={plan} floor={floor} hide={hide} />)}
-        {hiddenList && <div className="pt-2">{hiddenList}</div>}
+    <section aria-labelledby="move">
+      <h2 id="move" className="text-base/6 font-semibold">Still on GitHub’s schedule <span className="font-normal text-zinc-400">· {n}</span></h2>
+      <p className="mt-1 text-[13px]/5 text-pretty text-zinc-400">
+        GitHub’s own <code className="font-mono text-zinc-300">schedule:</code> often starts late or skips runs (<a href="/lateness" className="text-zinc-300 underline decoration-white/30 underline-offset-2 hover:decoration-white">what we’ve measured</a>).
+        Moving one is two small edits: remove <code className="font-mono text-zinc-300">schedule:</code> and add a <code className="font-mono text-zinc-300"># cronkick</code> line.
+      </p>
+      <div className="mt-3 space-y-2">
+        {candidates.map((c) => <CandidateRow key={c.id} c={c} open={false} plan={plan} floor={floor} hide={hide} />)}
       </div>
-    </details>
+      {hiddenList && <div className="pt-3">{hiddenList}</div>}
+    </section>
   );
 }
