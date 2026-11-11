@@ -20,8 +20,6 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
----
-
 ## Why
 
 GitHub's `schedule:` trigger is best effort. Scheduled runs start late, sometimes by most of an hour, and at busy times some never start at all. GitHub's own docs say so.
