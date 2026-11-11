@@ -148,6 +148,13 @@ await db.query(`INSERT INTO workflows (id, repo_id, path, name, suggested_diff) 
   (6002, 601, '.github/workflows/every-5.yml', 'every-5', $1), (6003, 601, '.github/workflows/hourly.yml', 'hourly', $2)`,
   ['  # cronkick: "*/5 * * * *"', '  # cronkick: "0 * * * *"']);
 await history(6, you[0], ago(19 * H), () => ({}));
+// What GitHub's own scheduler did for them: every-5 barely ran in the last day; hourly started being watched 2 h ago.
+await db.query(`INSERT INTO schedule_watch (workflow_id, crons, since, last_complete_at) VALUES (6002, $1, $2, $3), (6003, $4, $5, $3)`,
+  [JSON.stringify([{ cron: '*/5 * * * *', tz: 'UTC' }]), ago(30 * H), ago(10 * 60_000), JSON.stringify([{ cron: '0 * * * *', tz: 'UTC' }]), ago(2 * H)]);
+for (const [i, h] of [20, 15.5, 11, 6.25].entries()) {
+  const due = Math.floor(ago(h * H).getTime() / 300_000) * 300_000;
+  await db.query('INSERT INTO schedule_runs (run_id, workflow_id, created_at) VALUES ($1, 6002, $2)', [90_000 + i, new Date(due + (17 + i * 60) * 1000)]);
+}
 
 // The planner is healthy, so /healthz/dispatch reads ok.
 await db.query('UPDATE planner SET planned_until = $1', [new Date(now.getTime() + 2 * H)]);

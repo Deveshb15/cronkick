@@ -12,6 +12,18 @@ export class FakeGitHub implements GitHub {
   responses: (DispatchResult | DispatchTimeout)[] = [];
   delayMs = 0;
 
+  /** Scheduled runs per workflow id, newest first; an Error entry makes the read fail. */
+  scheduled = new Map<number, { id: number; createdAt: Date }[] | Error>();
+  scheduledReads: number[] = [];
+  async listScheduledRuns(_: number, __: string, workflowId: number, stopAt: Date | null, maxPages: number) {
+    this.scheduledReads.push(workflowId);
+    const all = this.scheduled.get(workflowId) ?? [];
+    if (all instanceof Error) throw all;
+    const runs = all.slice(0, maxPages * 100);
+    const complete = all.length <= maxPages * 100 || (!!stopAt && runs[runs.length - 1].createdAt <= stopAt);
+    return { runs, complete };
+  }
+
   installations: { id: number; account: { login: string; type: string } }[] = [];
   async listInstallations() { return this.installations; }
   async listRepos() { return this.repos; }

@@ -14,6 +14,11 @@ export interface GitHub {
   getFile(installationId: number, repo: string, path: string, ref: string): Promise<string | null>;
   /** Never throws for HTTP errors; throws DispatchTimeout when no answer arrived in time. */
   dispatch(installationId: number, repo: string, workflowId: number, ref: string): Promise<DispatchResult>;
+  /**
+   * Runs GitHub's own scheduler created for one workflow, newest first, reading pages until one reaches `stopAt` or
+   * `maxPages` run out. `complete` is false when the pages ran out first.
+   */
+  listScheduledRuns(installationId: number, repo: string, workflowId: number, stopAt: Date | null, maxPages: number): Promise<{ runs: { id: number; createdAt: Date }[]; complete: boolean }>;
 }
 
 export class DispatchTimeout extends Error {}
@@ -69,6 +74,19 @@ export function realGitHub(app: App): GitHub {
         if (e.status === 404) return null;
         throw e;
       }
+    },
+    async listScheduledRuns(id, repo, workflowId, stopAt, maxPages) {
+      const o = await kit(id);
+      const runs: { id: number; createdAt: Date }[] = [];
+      for (let page = 1; page <= maxPages; page++) {
+        const res = await o.request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
+          ...split(repo), workflow_id: workflowId, event: 'schedule', per_page: 100, page, request: { signal: AbortSignal.timeout(15_000) },
+        });
+        const batch: any[] = res.data.workflow_runs ?? [];
+        runs.push(...batch.map((r) => ({ id: r.id, createdAt: new Date(r.created_at) })));
+        if (batch.length < 100 || (stopAt && runs[runs.length - 1].createdAt <= stopAt)) return { runs, complete: true };
+      }
+      return { runs, complete: false };
     },
     async dispatch(id, repo, workflowId, ref) {
       const o = await kit(id);

@@ -10,6 +10,7 @@ import { planAhead, settle } from './maintenance.ts';
 import { sendGapAlerts, sendLimitNotices, sendSlotAlerts } from './alerts.ts';
 import { reconcileAll } from './sync.ts';
 import { collectProbes } from './probe/collector.ts';
+import { watchSchedules } from './schedule-watch.ts';
 import { webApp } from './web/app.ts';
 
 // Errors only (no tracing). Without SENTRY_DSN this is off and capture calls do nothing.
@@ -42,6 +43,7 @@ function loop(name: string, ms: number, fn: () => Promise<unknown>): Promise<voi
 
 let lastReconcile = 0;
 let lastProbe = 0;
+let lastWatch = 0;
 const loops = [
   loop('dispatch', 1000, () => dispatchTick(deps)),
   loop('maintenance', 60_000, async () => {
@@ -58,6 +60,11 @@ const loops = [
     if (cfg.probeRepos.length && now.getTime() - lastProbe > 5 * 60_000) {
       lastProbe = now.getTime();
       await collectProbes(db, cfg.probeRepos, cfg.probeToken);
+    }
+    // Workflows still on GitHub's schedule: an hourly read confirms what the webhooks said (a few requests each).
+    if (now.getTime() - lastWatch > 60 * 60_000) {
+      lastWatch = now.getTime();
+      await watchSchedules(deps, now);
     }
     if (now.getTime() - lastReconcile > 24 * 60 * 60_000) {
       lastReconcile = now.getTime();

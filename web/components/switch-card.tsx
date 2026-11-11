@@ -6,6 +6,8 @@ export type Hide = (workflowId: number, hidden: boolean) => Promise<void>;
 export type Candidate = {
   id: number; name: string; path: string; repo: string; editUrl: string; cadence: string;
   before: string; after: string; clamped: string | null; tooFast: boolean;
+  /** What GitHub's own scheduler did for it, in one line, when Cronkick has watched it. */
+  evidence?: { text: string; bad: boolean };
 };
 
 const body = (block: string) => block.split('\n').slice(1); // drop the shared `on:` line
@@ -31,12 +33,17 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
     <details open={open} className="group/c rounded-xl bg-white/[0.02] inset-ring inset-ring-white/10">
       <summary className="flex cursor-pointer list-none items-center gap-x-3 px-4 py-3 text-sm/6 [&::-webkit-details-marker]:hidden">
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500 transition group-open/c:rotate-90" />
-        <span className="font-medium">{c.name}</span>
-        <span className="min-w-0 truncate font-mono text-[13px]/5 text-zinc-400 max-sm:hidden">{c.repo.split('/')[1]} · {c.path.split('/').pop()}</span>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-baseline gap-x-3">
+            <span className="font-medium">{c.name}</span>
+            <span className="min-w-0 truncate font-mono text-[13px]/5 text-zinc-400 max-sm:hidden">{c.repo.split('/')[1]} · {c.path.split('/').pop()}</span>
+          </span>
+          {c.evidence && <span className={`block text-[13px]/5 tabular-nums ${c.evidence.bad ? 'text-red-300' : 'text-zinc-400'}`}>{c.evidence.text}</span>}
+        </span>
         {c.tooFast
-          ? <span className="ml-auto shrink-0 rounded-md bg-orange-400/10 px-1.5 py-0.5 text-xs/5 font-medium text-orange-300 inset-ring inset-ring-orange-400/20">{plan === 'free' ? 'Too fast for Free' : 'Too fast for your plan'}</span>
-          : <span className="ml-auto shrink-0 text-[13px]/5 text-zinc-400 max-sm:hidden">{c.cadence}</span>}
-        <span className="shrink-0 rounded-md bg-white/5 px-2.5 py-1 max-sm:ml-auto text-[13px]/5 font-medium text-zinc-100 inset-ring inset-ring-white/10 group-open/c:hidden">Move it</span>
+          ? <span className="shrink-0 rounded-md bg-orange-400/10 max-sm:hidden px-1.5 py-0.5 text-xs/5 font-medium text-orange-300 inset-ring inset-ring-orange-400/20">{plan === 'free' ? 'Too fast for Free' : 'Too fast for your plan'}</span>
+          : <span className="shrink-0 text-[13px]/5 text-zinc-400 max-sm:hidden">{c.cadence}</span>}
+        <span className="shrink-0 rounded-md bg-white/5 px-2.5 py-1 text-[13px]/5 font-medium text-zinc-100 inset-ring inset-ring-white/10 group-open/c:hidden">Move it</span>
       </summary>
       <div className="grid gap-5 border-t border-white/5 p-4 lg:grid-cols-[minmax(0,1fr)_15rem]">
         <div className="min-w-0">
