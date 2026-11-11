@@ -202,6 +202,18 @@ test('real client: an error without an HTTP response is a timeout; a real 503 is
   await expect(ok.dispatch(1, 'a/b', 1, 'main')).resolves.toEqual({ status: 200, runId: 7, runUrl: 'u' });
 });
 
+test('listWorkflows reads every page, so workflow 101+ is not treated as deleted', async () => {
+  const calls: any[] = [];
+  const wf = (id: number) => ({ id, path: `.github/workflows/${id}.yml`, name: `w${id}`, state: 'active' });
+  const gh = realGitHub({ getInstallationOctokit: async () => ({ request: async (_: string, p: any) => {
+    calls.push(p);
+    return { data: { workflows: Array.from({ length: p.page === 1 ? 100 : 5 }, (_, i) => wf((p.page - 1) * 100 + i + 1)) } };
+  } }) } as any);
+  const list = await gh.listWorkflows(1, 'acme/mono');
+  expect(list).toHaveLength(105);
+  expect(calls[1]).toMatchObject({ owner: 'acme', repo: 'mono', page: 2 });
+});
+
 test('history older than 91 days is pruned', async () => {
   await addSlot(-92 * 86_400_000);
   await addSlot(-1000);

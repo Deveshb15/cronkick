@@ -30,11 +30,11 @@ function retryAfter(headers: Record<string, any>): number | undefined {
   return undefined;
 }
 
-/** Follow `page` until a short page. Avoids pulling in the paginate plugin for two calls. */
-async function all(o: { request: (route: string, params: any) => Promise<any> }, route: string, key: string): Promise<any[]> {
+/** Follow `page` until a short page. Avoids pulling in the paginate plugin for three calls. */
+async function all(o: { request: (route: string, params: any) => Promise<any> }, route: string, key: string, params = {}): Promise<any[]> {
   const out: any[] = [];
   for (let page = 1; ; page++) {
-    const res = await o.request(route, { per_page: 100, page });
+    const res = await o.request(route, { ...params, per_page: 100, page });
     const items = key ? res.data[key] : res.data;
     out.push(...items);
     if (items.length < 100) return out;
@@ -56,8 +56,9 @@ export function realGitHub(app: App): GitHub {
     },
     async listWorkflows(id, repo) {
       const o = await kit(id);
-      const res = await o.request('GET /repos/{owner}/{repo}/actions/workflows', { ...split(repo), per_page: 100 });
-      return res.data.workflows.map((w: any) => ({ id: w.id, path: w.path, name: w.name, state: w.state }));
+      // Every page: sync treats a workflow it wasn't shown as deleted and drops its schedules.
+      const workflows = await all(o, 'GET /repos/{owner}/{repo}/actions/workflows', 'workflows', split(repo));
+      return workflows.map((w: any) => ({ id: w.id, path: w.path, name: w.name, state: w.state }));
     },
     async getFile(id, repo, path, ref) {
       const o = await kit(id);

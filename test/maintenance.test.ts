@@ -83,6 +83,24 @@ test('refreshSlots never touches the watermark; the next main tick still records
   expect(await gaps()).toHaveLength(1);
 });
 
+test('a refresh during a planning pass still drops the slot that pass added for a schedule just removed', async () => {
+  // A planning pass that read the schedule before it was removed, and hasn't committed its new slot yet.
+  const pass = await db.connect();
+  await pass.query('BEGIN');
+  await pass.query('SELECT 1 FROM planner FOR UPDATE');
+  const due = new Date(NOW.getTime() + 2 * 3_600_000);
+  await pass.query(
+    `INSERT INTO slots (installation_id, repo_id, workflow_id, due_at, fire_at, deadline_at, next_attempt_at) VALUES (1, 10, 100, $1, $1, $2, $1)`,
+    [due, new Date(due.getTime() + 300_000)],
+  );
+  const refresh = refreshSlots(db, 1, NOW); // the marker is gone: no schedules for workflow 100
+  await new Promise((r) => setTimeout(r, 200));
+  await pass.query('COMMIT');
+  pass.release();
+  await refresh;
+  expect((await db.query('SELECT count(*)::int AS n FROM slots')).rows[0].n).toBe(0);
+});
+
 test('two main ticks at once record one gap', async () => {
   await schedule('0 * * * *');
   await setWatermark(at('10:30:00'));
