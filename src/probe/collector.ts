@@ -183,6 +183,11 @@ export async function probeReport(db: Db, configured: string[], now: Date): Prom
 /** A pair shows numbers once both sides share this much measured time; the home page waits for a full day. */
 export const PAIR_MIN_HOURS = 6;
 export const HOME_MIN_HOURS = 24;
+/**
+ * Time a newly added workflow gets to start running before its scheduled minutes count. GitHub's scheduler can take
+ * a while to pick up a new `schedule:`; Cronkick reads the file on the push and runs it within seconds.
+ */
+export const START_GRACE_MS = { github: GRACE_MS, cronkick: 10 * 60_000 } as const;
 const H = 3_600_000;
 
 type Side = { file: string; stats: Lateness };
@@ -193,6 +198,8 @@ type Side = { file: string; stats: Lateness };
 export type Pair = {
   cron: string; state: 'compared' | 'collecting' | 'paused'; reason: string | null;
   repo: string | null; isPublic: boolean; from: Date | null; until: Date | null; hours: number;
+  /** When measuring starts (or started) and when the repo's sample began; known even before there are numbers. */
+  startAt: Date | null; sampleFrom: Date | null;
   github: Side; cronkick: Side;
   ticks: { due: Date; github: number | null; cronkick: number | null }[];
 };
@@ -216,7 +223,7 @@ export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Pro
     const gh = PROBE_WORKFLOWS.find((w) => w.cron === cron && w.via === 'github')!;
     const ck = PROBE_WORKFLOWS.find((w) => w.cron === cron && w.via === 'cronkick')!;
     const pair: Pair = {
-      cron, state: 'collecting', reason: null, repo: null, isPublic: false, from: null, until: null, hours: 0,
+      cron, state: 'collecting', reason: null, repo: null, isPublic: false, from: null, until: null, hours: 0, startAt: null, sampleFrom: null,
       github: { file: gh.file, stats: lateness([], 0) }, cronkick: { file: ck.file, stats: lateness([], 0) }, ticks: [],
     };
     const ghDelays: number[] = [], ckDelays: number[] = [];
@@ -229,7 +236,7 @@ export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Pro
       const sampleFrom = (await db.query('SELECT sample_from FROM probe_health WHERE repo = $1', [repo.repo])).rows[0]?.sample_from as Date | null;
       const added = [gh, ck].map((w) => wfs.get(w.file)?.created_at as Date | null | undefined);
       let start: number;
-      if (added.every((d) => d)) start = Math.max(...added.map((d) => d!.getTime() + GRACE_MS));
+      if (added.every((d) => d)) start = Math.max(...[gh, ck].map((w, i) => added[i]!.getTime() + START_GRACE_MS[w.via]));
       else {
         const firsts = new Map((await db.query(
           'SELECT workflow, min(due_at) AS first FROM probe_runs WHERE repo = $1 AND workflow = ANY($2) AND due_at > $3 AND due_at <= $4 GROUP BY workflow',
@@ -243,7 +250,12 @@ export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Pro
       }
       const from = new Date(Math.max(start, sampleFrom?.getTime() ?? 0, now.getTime() - 7 * 24 * H));
       const until = repo.until!;
-      if (until <= from) { pair.reason ??= `Measuring starts ${from.toISOString().slice(11, 16)} UTC, an hour after both workflows were added`; continue; }
+      pair.startAt ??= from;
+      pair.sampleFrom ??= sampleFrom;
+      pair.repo ??= repo.repo;
+      pair.isPublic = repo.private === false;
+      // Numbers start once the first scheduled minute after the start is an hour old: GitHub may create a run that late.
+      if (until <= from || !dueTimes(cron, from, until).length) { pair.reason ??= `Measuring from ${from.toISOString().slice(11, 16)} UTC`; continue; }
       const dues = dueTimes(cron, from, until);
       const { rows } = await db.query(
         'SELECT workflow, due_at, started_at FROM probe_runs WHERE repo = $1 AND workflow = ANY($2) AND due_at >= $3 AND due_at <= $4',
@@ -254,12 +266,12 @@ export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Pro
       ghDelays.push(...g.values()); ckDelays.push(...c.values());
       expected += dues.length;
       // The first repo with both sides draws the strips and sets the window shown.
-      if (!pair.repo) {
+      if (!pair.from) {
         Object.assign(pair, { repo: repo.repo, isPublic: repo.private === false, from, until, hours: (until.getTime() - from.getTime()) / H });
         pair.ticks = dues.slice(-n).map((d) => ({ due: d, github: g.get(d.getTime()) ?? null, cronkick: c.get(d.getTime()) ?? null }));
       }
     }
-    if (pair.state !== 'paused' && pair.repo) {
+    if (pair.state !== 'paused' && pair.from) {
       pair.github.stats = lateness(ghDelays, expected);
       pair.cronkick.stats = lateness(ckDelays, expected);
       // Early numbers are shown, marked early, rather than an empty box.
