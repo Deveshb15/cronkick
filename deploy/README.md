@@ -129,11 +129,11 @@ Every push to `main` runs **CI/CD** (`.github/workflows/ci.yml`):
 
 ```
 Test ─────────────┐
-                  ├─▶ Migrate database ─▶ Go live (cronkick-1) ─▶ Go live (cronkick-2) ─▶ Check cronkick.xyz
+                  ├─▶ Migrate database ─▶ Go live: cronkick-1 ─▶ Go live: cronkick-2 ─▶ Check cronkick.xyz
 Build and upload ─┘
 ```
 
-1. **Test** and **Build and upload** run at the same time. The build happens on GitHub, not on the servers, so it never takes CPU from sending triggers. It is uploaded to `/opt/cronkick/releases/<run>-<sha>` on both servers, and nothing that is serving changes. Packages are hard-linked from the live release when `package-lock.json` hasn't changed.
+1. **Test** and **Build and upload** run at the same time. Build and upload first checks it can SSH to both servers, so an access problem fails in seconds. The build happens on GitHub, not on the servers, so it never takes CPU from sending triggers. It is uploaded to `/opt/cronkick/releases/<run>-<sha>` on both servers, and nothing that is serving changes. Packages are hard-linked from the live release when `package-lock.json` hasn't changed.
 2. **Migrate database** applies new migrations from the new release while the old code still runs, so migrations must keep working with the release before them. Workers also migrate on boot, under the same advisory lock.
 3. **Go live** runs one server at a time. It points `/opt/cronkick/current` at the new release, restarts both services and waits until the site serves that exact build. If the server doesn't come up healthy, it is switched back to the previous release and the second server is never touched.
 4. **Check cronkick.xyz** confirms the public site serves the release and `/healthz/dispatch` is ok.

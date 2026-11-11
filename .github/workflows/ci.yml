@@ -54,6 +54,24 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v5
+      - &tailnet
+        name: Join the tailnet (tag:ci may only SSH to the droplets)
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - &trust
+        # Tailscale SSH: the tailnet authenticates both ends, so there is no host key to pin in advance.
+        name: Trust the droplets on the tailnet
+        run: mkdir -p ~/.ssh && printf 'Host cronkick-*\n  StrictHostKeyChecking accept-new\n' >> ~/.ssh/config
+      # Fails in seconds, before the build, if the tailnet policy or a server is off.
+      - name: Reach both servers
+        run: |
+          for h in $HOSTS; do
+            ssh -o BatchMode=yes -o ConnectTimeout=15 "root@$h" true || { echo "::error::can't SSH to $h over the tailnet"; exit 1; }
+            echo "$h ok"
+          done
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -68,17 +86,6 @@ jobs:
         run: deploy/release.sh build "$RELEASE"
         env:
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
-      - &tailnet
-        name: Join the tailnet (tag:ci may only SSH to the droplets)
-        uses: tailscale/github-action@v3
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-      - &trust
-        # Tailscale SSH: the tailnet authenticates both ends, so there is no host key to pin in advance.
-        name: Trust the droplets on the tailnet
-        run: mkdir -p ~/.ssh && printf 'Host cronkick-*\n  StrictHostKeyChecking accept-new\n' >> ~/.ssh/config
       - name: Upload to both servers
         run: |
           pids=()
@@ -101,31 +108,39 @@ jobs:
           deploy/release.sh migrate "${HOSTS%% *}" "$RELEASE" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # One server at a time, so the other keeps sending triggers. A server that doesn't come up healthy is
-  # switched back to the previous release, and the next one is never touched.
-  live:
-    name: Go live (${{ matrix.name }})
+  # switched back to the previous release, and the second one is never touched.
+  live-1:
+    name: "Go live: cronkick-1"
     needs: migrate
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      max-parallel: 1
-      matrix:
-        include:
-          - { name: cronkick-1 }
-          - { name: cronkick-2 }
     environment:
       name: production
       url: https://cronkick.xyz
-    steps:
+    env:
+      SERVER: cronkick-1
+    steps: &go-live
       - uses: actions/checkout@v5
       - *tailnet
       - *trust
       - name: Switch, restart and wait until healthy
-        run: deploy/release.sh live "${{ matrix.name }}" "$RELEASE"
+        run: deploy/release.sh live "$SERVER" "$RELEASE"
+
+  live-2:
+    name: "Go live: cronkick-2"
+    needs: live-1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://cronkick.xyz
+    env:
+      SERVER: cronkick-2
+    steps: *go-live
 
   verify:
     name: Check cronkick.xyz
-    needs: live
+    needs: live-2
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
