@@ -1,11 +1,10 @@
+<!-- The app icon reads on light and dark backgrounds, so it needs no <picture>: those follow the OS theme, not
+     GitHub's, and showed the white wordmark on GitHub's light theme. The name is real text, coloured by GitHub. -->
 <p align="center">
-  <a href="https://cronkick.xyz">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="brand/cronkick-lockup-on-dark.svg">
-      <img alt="Cronkick" src="brand/cronkick-lockup-on-light.svg" height="56">
-    </picture>
-  </a>
+  <a href="https://cronkick.xyz"><img alt="" src="brand/cronkick-app-icon.svg" width="72" height="72"></a>
 </p>
+
+<h1 align="center">Cronkick</h1>
 
 <p align="center"><strong>On-time cron for GitHub Actions.</strong><br>One comment in your workflow file, and your scheduled jobs start within seconds of their time.</p>
 
