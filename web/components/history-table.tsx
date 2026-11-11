@@ -22,7 +22,7 @@ function Status({ s }: { s: HistoryRow }) {
 }
 const took = (s: HistoryRow) => (s.runStartedAt && s.runCompletedAt ? fmtDuration(Date.parse(s.runCompletedAt) - Date.parse(s.runStartedAt)) : null);
 
-/** Every step of one slot, from its scheduled time to the job's result, one per line. */
+/** Every step of one slot, from its scheduled time to the run's result, one per line. */
 function Steps({ s }: { s: HistoryRow }) {
   const sent = s.state === 'fired' || s.state === 'accepted';
   const tries = s.attempts > 1 ? ` after ${s.attempts} tries` : '';
@@ -33,7 +33,7 @@ function Steps({ s }: { s: HistoryRow }) {
     s.runUrl ? <a href={s.runUrl} className="text-white underline decoration-white/30 hover:decoration-white">Run linked {s.matchedBy === 'time' ? 'by time (a manual run near then could match) ⚠' : 'by id'} ↗</a> : sent ? 'Run not linked yet' : null,
     // Time GitHub took to start the run after accepting it: GitHub's queue, not Cronkick.
     s.runStartedAt && s.sendDelayMs !== null ? `GitHub started the run ${fmtDuration(new Date(s.runStartedAt).getTime() - new Date(s.due).getTime() - s.sendDelayMs)} later` : null,
-    s.runUrl ? <>Job <JobResult conclusion={s.conclusion} />{took(s) ? ` in ${took(s)}` : ''}</> : null,
+    s.runUrl ? <>Run <JobResult conclusion={s.conclusion} />{took(s) ? ` in ${took(s)}` : ''}</> : null,
   ].filter(Boolean);
   return (
     <ol className="space-y-1 border-l border-white/10 pl-4 text-[13px]/5 text-zinc-300">
@@ -91,7 +91,7 @@ export function HistoryTable({ rows, gaps = [], newerEdge = null }: { rows: Hist
             <th className="py-2.5 pl-1 font-medium">Scheduled</th>
             <th className="font-medium">Status</th>
             <th className="font-medium">Sent after</th>
-            <th className="font-medium">GitHub job</th>
+            <th className="font-medium">GitHub run</th>
             <th className="font-medium">Took</th>
             <th className="pr-1 text-right font-medium">Run</th>
           </tr>
@@ -126,7 +126,7 @@ export function HistoryTable({ rows, gaps = [], newerEdge = null }: { rows: Hist
                 <td className={`font-mono text-[13px]/5 tabular-nums max-sm:order-3 ${cell} ${s.tick === 'late' ? 'text-orange-300' : 'text-zinc-300'}`}>
                   <span className="font-sans text-zinc-400 sm:hidden">Sent </span>{fmtDelay(s.sendDelayMs)}{s.tick === 'late' && <span className="font-sans"> late</span>}
                 </td>
-                <td className={`text-[13px]/5 max-sm:order-4 max-sm:justify-self-end ${cell}`}><span className="text-zinc-400 sm:hidden">Job </span><JobResult conclusion={s.conclusion} display={s.display} /></td>
+                <td className={`text-[13px]/5 max-sm:order-4 max-sm:justify-self-end ${cell}`}><span className="text-zinc-400 sm:hidden">Run </span><JobResult conclusion={s.conclusion} display={s.display} /></td>
                 <td className={`font-mono text-[13px]/5 text-zinc-300 tabular-nums max-sm:hidden ${cell}`}>{took(s) ?? <span className="text-zinc-500">—</span>}</td>
                 <td className={`pr-1 text-right max-sm:hidden ${cell}`}>{s.runUrl ? <a href={s.runUrl} className="text-[13px]/5 text-zinc-300 hover:text-white hover:underline">View run<span className="sr-only"> for {s.due}</span> ↗</a> : <span className="text-zinc-500">—</span>}</td>
               </tr>

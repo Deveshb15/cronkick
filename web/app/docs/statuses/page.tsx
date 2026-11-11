@@ -20,8 +20,8 @@ export default function Statuses() {
       <p>Cronkick plans runs up to 2 hours ahead. A planned run that Cronkick didn’t send before its deadline shows as <strong>{SLOT_LABEL.expired}</strong> with the note “Cronkick didn’t send it before its deadline”.</p>
       <p>If Cronkick’s scheduler stops for more than 2 hours, the dashboard shows one outage window, from its last planning pass to when planning resumed, rather than inventing a row per missed time. Runs due then may not have been sent; any that were sent are listed in the history. See <a href="/docs/timing#cronkick-down">When Cronkick is down</a>.</p>
 
-      <H2 id="job-result">The job’s result</H2>
-      <p>The job’s own result (passed, failed, cancelled) is shown next to the status, exactly as GitHub reports it. A run can be started on time by Cronkick and still fail in your job.</p>
+      <H2 id="job-result">The run’s result</H2>
+      <p>The GitHub run’s own result (passed, failed, cancelled) is shown next to the status, exactly as GitHub reports it. A run can be started on time by Cronkick and still fail on GitHub.</p>
 
       <H2 id="workflows">Each workflow</H2>
       <Terms rows={[

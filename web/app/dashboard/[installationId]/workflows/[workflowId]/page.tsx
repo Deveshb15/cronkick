@@ -1,20 +1,24 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { HistoryTable } from '@/components/history-table';
 import { GitHubMark } from '@/components/icons';
 import { CopyButton, Countdown, Time, Zone } from '@/components/live';
+import { DailyCells } from '@/components/daily-cells';
+import { DelayDistribution } from '@/components/delay-distribution';
 import { LiveStrip } from '@/components/live-strip';
 import { AlertHint, Code, GapNotice, StatusDot, StatusKey, Ticks, VERDICT_DOT, VERDICT_WORD } from '@/components/ui';
 import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { MAX_ROWS, recentSlots, workflowHistory, type Flag, type HistoryFilter, type Schedule } from '@/lib/data';
-import { fmtDelay, humanCron, plural } from '@/lib/live';
+import { dailyCells, dayBounds, knownZone, retainedFrom, MAX_ROWS, nextRuns, RANGES, rangesFor, rangeStats, recentSlots, workflowHistory, type Flag, type HistoryFilter, type Range, type Schedule } from '@/lib/data';
+import { nextPlan } from '@/lib/format';
+import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 
 export const dynamic = 'force-dynamic';
 
 const FILTERS: { key: HistoryFilter | undefined; label: string }[] = [
-  { key: undefined, label: 'All' }, { key: 'late', label: 'Late' }, { key: 'missed', label: 'Not sent' }, { key: 'unconfirmed', label: 'Unconfirmed' }, { key: 'failed', label: 'Failed jobs' },
+  { key: undefined, label: 'All' }, { key: 'late', label: 'Late' }, { key: 'missed', label: 'Not sent' }, { key: 'unconfirmed', label: 'Unconfirmed' }, { key: 'failed', label: 'Failed runs' },
 ];
 const container = 'mx-auto max-w-6xl px-4 sm:px-6 lg:px-10';
 const button = 'inline-flex min-h-11 items-center gap-x-1.5 rounded-lg bg-white/5 px-3 text-sm/6 font-medium text-zinc-100 inset-ring inset-ring-white/10 transition hover:bg-white/10 sm:min-h-9';
@@ -34,7 +38,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 export default async function WorkflowPage({ params, searchParams }: {
-  params: Promise<{ installationId: string; workflowId: string }>; searchParams: Promise<{ filter?: string; before?: string; after?: string }>;
+  params: Promise<{ installationId: string; workflowId: string }>; searchParams: Promise<{ filter?: string; before?: string; after?: string; range?: string; day?: string }>;
 }) {
   const p = await params;
   const id = Number(p.installationId);
@@ -46,21 +50,36 @@ export default async function WorkflowPage({ params, searchParams }: {
   // workflowHistory ignores a malformed cursor.
   const before = q.before ? new Date(q.before) : undefined;
   const after = q.after && !q.before ? new Date(q.after) : undefined;
-  const [h, strips] = await Promise.all([workflowHistory(db, id, wid, now, filter, before, after), recentSlots(db, id, now, 96)]);
+  const tz = await knownZone(db, viewerZone((await cookies()).get('tz')?.value));
+  const asked = await dayBounds(db, q.day, tz);
+  // A day past the plan's history, or in the future, isn't "nothing due"; it's not shown, so ignore it.
+  const bounds = asked && asked.from < now && asked.until > (await retainedFrom(db, id, now)) ? asked : null;
+  const [h, strips] = await Promise.all([workflowHistory(db, id, wid, now, filter, before, after, bounds ?? undefined), recentSlots(db, id, now, 96, wid)]);
   if (!h) notFound();
+  // Analysis range: 7 days unless asked; Free can't ask past its 7. Daily cells cover at least a week.
+  const ranges = rangesFor(h.plan ?? 'free');
+  const range: Range = ranges.find((r) => r === q.range) ?? '7d';
+  const [stats, days] = await Promise.all([
+    rangeStats(db, wid, now, new Date(now.getTime() - RANGES[range] * 24 * 60 * 60_000)),
+    dailyCells(db, id, [wid], now, tz, Math.max(7, RANGES[range])).then((m) => m.get(wid) ?? []),
+  ]);
+  const day = bounds ? q.day : undefined;
+  const label = range.replace(/(\d)(\D)/, '$1 $2'); // "7 d" 
+  // Outages that touch what this page shows: one day, when a day is chosen.
+  const gaps = bounds ? h.gaps.filter((g) => Date.parse(g.start) < bounds.until.getTime() && Date.parse(g.end) > bounds.from.getTime()) : h.gaps;
+  const keep = new URLSearchParams({ ...(q.range === range && { range }), ...(filter && { filter }) }).toString();
   const w = h.workflow;
   const schedules = w.schedules as Schedule[];
   const flags = w.flags as Flag[];
   const active = h.status === 'active' && w.present;
   const strip = strips.get(wid) ?? [];
-  const observed = h.filterCounts.all > 0;
+  const observed = h.filterCounts.all > 0 || !!day;
   const words = schedules.map((s) => `${humanCron(s.cron)} · ${s.tz}`).join(' and ') || 'No schedule';
   const window = h.limits.historyRows ? `last ${h.limits.historyRows} runs` : `last ${h.limits.historyDays} days`;
-  const c = h.c24;
   const status = flags.length ? { dot: 'bg-red-500', word: 'Needs a fix' } : h.status === 'limited' ? { dot: 'bg-zinc-500', word: 'Paused' }
     : !active ? { dot: 'bg-zinc-600', word: 'Not scheduled' } : { dot: VERDICT_DOT[h.health], word: VERDICT_WORD[h.health][0].toUpperCase() + VERDICT_WORD[h.health].slice(1) };
   const link = (o: Record<string, string | undefined>) => {
-    const all: Record<string, string | undefined> = { filter, ...o };
+    const all: Record<string, string | undefined> = { filter, range: q.range === range ? range : undefined, day, ...o };
     return `?${new URLSearchParams(Object.entries(all).filter((e): e is [string, string] => !!e[1]))}#history`;
   };
   const first = h.slots[0];
@@ -94,11 +113,8 @@ export default async function WorkflowPage({ params, searchParams }: {
         </div>
 
         {active && (
-          <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 border-y border-white/10 py-4 sm:grid-cols-4">
-            <Fact label="Next run">{h.next ? <><Time iso={h.next} zone /> <span className="font-normal whitespace-nowrap text-zinc-400">· <Countdown to={h.next} /></span></> : <span className="text-zinc-400">None planned yet</span>}</Fact>
-            <Fact label="On time · 24 h">{c.due ? `${c.onTime} of ${c.due}` : <span className="text-zinc-400">Nothing due</span>}</Fact>
-            <Fact label="Median send delay · 24 h">{h.medianDelayMs === null ? <span className="text-zinc-400">—</span> : fmtDelay(h.medianDelayMs)}</Fact>
-            <Fact label="GitHub jobs · 24 h">{c.passed + c.failed ? <>{c.passed} passed{c.failed ? <span className="text-red-300"> · {c.failed} failed</span> : ''}</> : <span className="text-zinc-400">None reported</span>}</Fact>
+          <dl className="mt-6 border-y border-white/10 py-4">
+            <Fact label="Next run">{h.next ? <><Time iso={h.next} zone /> <span className="font-normal whitespace-nowrap text-zinc-400">· <Countdown to={h.next} /></span>{(() => { const p = nextPlan(nextRuns(schedules, now)); return p.kind === 'every' ? <span className="block text-[13px]/5 font-normal text-zinc-400">then every {p.minutes} min</span> : null; })()}</> : <span className="text-zinc-400">None planned yet</span>}</Fact>
           </dl>
         )}
       </header>
@@ -140,7 +156,48 @@ export default async function WorkflowPage({ params, searchParams }: {
             <h2 id="recent" className="text-base/6 font-semibold">Recent runs <span className="font-normal text-zinc-400">· last {Math.min(strip.length, 96)}</span></h2>
             <div className="flex items-center gap-x-4 text-[13px]/5 text-zinc-400"><StatusKey /></div>
           </div>
-          <div className="mt-3"><LiveStrip slots={strip} positions={96} height="h-12" gaps={h.gaps} interactive /></div>
+          <div className="mt-3"><LiveStrip slots={strip} positions={96} height="h-12" gaps={h.gaps} interactive keep={q.range === range ? `range=${range}` : ''} /></div>
+        </section>
+      )}
+
+      {observed && (
+        <section aria-labelledby="analysis" className="space-y-6">
+          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+            <h2 id="analysis" className="text-base/6 font-semibold">How it’s been running</h2>
+            <nav aria-label="Range" className="flex gap-1 rounded-lg bg-white/5 p-1 text-[13px]/5">
+              {ranges.map((r) => (
+                <Link key={r} href={`?${new URLSearchParams({ ...(filter && { filter }), ...(day && { day }), range: r })}#analysis`} scroll={false} aria-current={r === range ? 'page' : undefined}
+                  className={`inline-flex min-h-11 items-center rounded-md px-3 transition sm:min-h-8 ${r === range ? 'bg-white/10 font-medium text-white' : 'text-zinc-300 hover:text-white'}`}>{r.replace(/(\d)(\D)/, '$1 $2')}</Link>
+              ))}
+            </nav>
+          </div>
+          {!stats.c.due ? <p className="text-sm/6 text-zinc-400">Nothing was due in the last {label}.{range !== ranges[ranges.length - 1] && ' Pick a longer range.'}</p> : <>
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
+            <Fact label={`On time · ${label}`}>
+              {stats.c.onTime} of {stats.c.due}
+              {([[stats.c.late, 'late', 'text-orange-300'], [stats.c.waiting, 'sending', 'text-sky-300'], [stats.c.overdue, 'overdue', 'text-red-300'],
+                [stats.c.unconfirmed, 'unconfirmed', 'text-zinc-300'], [stats.c.refused + stats.c.gaveUp, 'not sent', 'text-red-300']] as const)
+                .filter(([n]) => n).map(([n, w, cls]) => <span key={w} className={`font-normal ${cls}`}> · {n} {w}</span>)}
+            </Fact>
+            <Fact label={`Send delay · ${label}`}>{fmtDelay(stats.p50)} median <span className="font-normal text-zinc-400">· {fmtDelay(stats.p95)} p95 · {plural(stats.n, 'run')}</span></Fact>
+            <Fact label={`GitHub runs · ${label}`}>
+              {stats.c.passed} passed{stats.c.failed ? <span className="text-red-300"> · {stats.c.failed} failed</span> : null}
+              {stats.other ? <span className="font-normal text-zinc-400"> · {stats.other} neutral or skipped</span> : null}
+              {stats.unreported ? <span className="font-normal text-zinc-400"> · {stats.unreported} not reported yet</span> : null}
+            </Fact>
+          </dl>
+          <div>
+            <p className="mb-2 text-xs/5 text-zinc-400">Sent after the scheduled time · {label}</p>
+            <DelayDistribution bins={stats.bins} n={stats.n} p50={stats.p50} p95={stats.p95} over={stats.over} max={stats.max}
+              topOfHour={stats.topOfHour} />
+          </div>
+          {days.some((d) => d.state !== 'none') && (
+            <div>
+              <p className="mb-2 text-xs/5 text-zinc-400">Daily · last {days.length} days, today so far · days in {tzAbbrev(tz, now)}</p>
+              <DailyCells cells={days} href={`/dashboard/${id}/workflows/${wid}`} keep={keep} selected={day} />
+            </div>
+          )}
+          </>}
         </section>
       )}
 
@@ -149,30 +206,33 @@ export default async function WorkflowPage({ params, searchParams }: {
           <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
             <div>
               <h2 id="history" className="text-base/6 font-semibold">History</h2>
-              <p className="text-[13px]/5 text-zinc-400">The {window} on {h.plan === 'pro' ? 'Pro' : 'Free'} · {MAX_ROWS} per page · times in <Zone /></p>
+              <p className="text-[13px]/5 text-zinc-400">
+                {day ? <>Only {new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })} ({tzAbbrev(tz, now)}) · <Link href={link({ day: undefined })} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Show all days</Link></> : <>The {window} on {h.plan === 'pro' ? 'Pro' : 'Free'}</>}
+                {' '}· {MAX_ROWS} per page · times in <Zone />
+              </p>
             </div>
             <nav aria-label="Filter history" className="flex gap-1 rounded-lg bg-white/5 p-1 text-[13px]/5 max-sm:-mx-4 max-sm:w-[calc(100%+2rem)] max-sm:overflow-x-auto max-sm:rounded-none sm:flex-wrap">
               {FILTERS.map((f) => {
                 const n = h.filterCounts[f.key ?? 'all'];
                 return (
-                  <Link key={f.label} href={f.key ? `?filter=${f.key}` : '?'} scroll={false} aria-current={filter === f.key ? 'page' : undefined}
+                  <Link key={f.label} href={link({ filter: f.key, before: undefined, after: undefined })} scroll={false} aria-current={filter === f.key ? 'page' : undefined}
                     className={`inline-flex min-h-11 shrink-0 items-center gap-x-1.5 rounded-md px-2.5 transition sm:min-h-8 ${filter === f.key ? 'bg-white/10 font-medium text-white' : 'text-zinc-300 hover:text-white'}`}>
-                    {f.label}<span className={`tabular-nums ${n ? 'text-zinc-400' : 'text-zinc-600'}`}>{n}</span>
+                    {f.label}<span className="text-zinc-400 tabular-nums">{n}</span>
                   </Link>
                 );
               })}
             </nav>
           </div>
-          <GapNotice gaps={h.gaps} className="mt-4" />
+          <GapNotice gaps={gaps} className="mt-4" />
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[13px]/5 text-zinc-400">
             <span>{h.slots.length ? <>Showing {plural(h.slots.length, 'run')}: <Time iso={last.due} date /> – <Time iso={first.due} date /></> : null}</span>
             {pager}
           </div>
           <div className="mt-2">
             {h.slots.length
-              ? <HistoryTable rows={h.slots} gaps={filter ? [] : h.gaps} newerEdge={h.newerEdge} />
+              ? <HistoryTable rows={h.slots} gaps={filter ? [] : gaps} newerEdge={h.newerEdge} />
               : <p className="rounded-xl px-4 py-8 text-center text-sm/6 text-zinc-400 inset-ring inset-ring-white/10">
-                  {before || after ? <>Nothing on this page. <Link href={link({})} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Back to the latest runs</Link></> : 'No runs match this filter.'}
+                  {filter ? `No runs match this filter${day ? ' on this day' : ''}.` : day && !before && !after ? (gaps.length ? 'No runs were recorded that day; Cronkick had a coverage gap, so runs due then may not have been sent.' : 'Nothing was due that day.') : before || after ? <>Nothing on this page. <Link href={link({})} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Back to the latest runs</Link></> : 'No runs match this filter.'}
                 </p>}
           </div>
           {h.slots.length > 10 && pager && <div className="mt-4 flex justify-end">{pager}</div>}

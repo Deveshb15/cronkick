@@ -1,18 +1,20 @@
 import { ChevronRightIcon } from '@heroicons/react/16/solid';
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { DispatchToasts, NeedsAttention } from '@/components/activity';
 import { FirstRun } from '@/components/first-run';
 import { Countdown, Time, Zone } from '@/components/live';
 import { LiveStrip } from '@/components/live-strip';
+import { ScheduleCard } from '@/components/schedule-card';
 import { SwitchSection, type Candidate } from '@/components/switch-card';
 import { keepOnGitHub } from './actions';
 import { AlertHint, Code, GapNotice, StatusKey, Ticks, VERDICT_DOT } from '@/components/ui';
 import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { activity, exceptions, installationsFor, overview, recentSlots, type SlotView, type WorkflowRow } from '@/lib/data';
-import { manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
-import { fmtDelay, fmtDuration, humanCron, plural } from '@/lib/live';
+import { activity, dailyCells, knownZone, exceptions, installationsFor, overview, recentSlots, type DayCell, type SlotView, type WorkflowRow } from '@/lib/data';
+import { benchmarkSummary, manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
+import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 import { switchPlan } from '@/lib/switch';
 import { probeRepos } from '../../../../src/config.ts';
 import { probeReport } from '../../../../src/probe/collector.ts';
@@ -22,10 +24,6 @@ export const dynamic = 'force-dynamic';
 
 const STRIP = 48;
 const container = 'mx-auto max-w-6xl px-4 sm:px-6 lg:px-10';
-
-/** "Every day at 03:30 · Europe/Berlin", from the workflow's live schedules. */
-const cadenceOf = (w?: WorkflowRow) =>
-  (w?.schedules ?? []).filter((s) => s.status === 'active').map((s) => `${humanCron(s.cron)} · ${s.tz}`).join(' and ');
 
 function ScheduleRow({ w, installationId, slots, gaps, limit, now }: {
   w: WorkflowRow; installationId: number; slots: SlotView[]; gaps: { start: string; end: string }[]; limit: number; now: Date;
@@ -51,7 +49,7 @@ function ScheduleRow({ w, installationId, slots, gaps, limit, now }: {
           <div className="text-[13px]/5 @3xl:text-right">
             <p className={`flex items-center gap-x-2 font-medium @max-3xl:hidden @3xl:justify-end ${st.text}`}><span aria-hidden="true" className={`size-2 rounded-full ${st.dot}`} />{st.word}</p>
             {active && w.nextDue && <p className="mt-0.5 text-zinc-400 tabular-nums"><span className="whitespace-nowrap">Next <Time iso={w.nextDue} className="text-zinc-200" /></span> · <span className="whitespace-nowrap"><Countdown to={w.nextDue} /></span></p>}
-            {failed > 0 && <p className="mt-0.5 text-red-300">{plural(failed, 'job')} failed on GitHub · 24 h</p>}
+            {failed > 0 && <p className="mt-0.5 text-red-300">{plural(failed, 'GitHub run')} failed · 24 h</p>}
           </div>
           <ChevronRightIcon aria-hidden="true" className="size-4 fill-zinc-500 transition group-hover:translate-x-0.5 group-hover:fill-zinc-300 @max-3xl:hidden" />
         </div>
@@ -75,8 +73,8 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const s = await requireInstallation(id, `/dashboard/${id}`);
   const inst = (await installationsFor(db, s.installs)).find((i) => i.id === id)!;
   const now = new Date();
-  const [{ repos, totals }, slots, items, problems, report] = await Promise.all([
-    overview(db, id, now), recentSlots(db, id, now, STRIP), activity(db, id, now, 8), exceptions(db, id, now), probeReport(db, probeRepos(), now).catch(() => null),
+  const [{ repos, totals }, items, problems, report] = await Promise.all([
+    overview(db, id, now), activity(db, id, now, 8), exceptions(db, id, now), probeReport(db, probeRepos(), now).catch(() => null),
   ]);
   const limits = PLANS[inst.plan];
   const all = repos.flatMap((r) => r.workflows);
@@ -91,13 +89,14 @@ export default async function Overview({ params }: { params: Promise<{ installat
   });
   const switchSection = <SwitchSection candidates={candidates} hidden={hidden} plan={inst.plan} floor={limits.floorMinutes} hide={keepOnGitHub.bind(null, id)} />;
 
-  // Until a slot first comes due, the page is the setup guide; from then on, anything due (sent or not) is the overview's.
-  if (totals.firstRun) {
-    const nk = totals.nextKick;
+  const shownWfs = all.filter((w) => w.status === 'active' || w.status === 'limited' || w.status === 'needs_fix');
+  // Room per schedule shrinks as the list grows: the only schedule gets a spotlight, two or three get cards, four or
+  // more keep the compact rows. Ones that need a fix or are paused stay compact rows either way, with their reason.
+  // The setup guide only until a schedule is configured; from then on the cards show it, awaiting its first run.
+  if (totals.firstRun && !shownWfs.length) {
     return (
       <>
-        <FirstRun installationId={id} repos={repos.map((r) => r.full_name)} manageUrl={manageReposUrl(inst)} floor={limits.floorMinutes} candidates={candidates.length} alerts={!!inst.alert_email}
-          found={nk ? { workflowId: nk.workflowId, workflow: nk.workflow, repo: nk.repo, due: nk.due, cadence: cadenceOf(all.find((w) => w.id === nk.workflowId)) } : null} />
+        <FirstRun installationId={id} repos={repos.map((r) => r.full_name)} manageUrl={manageReposUrl(inst)} floor={limits.floorMinutes} candidates={candidates.length} alerts={!!inst.alert_email} />
         {(candidates.length > 0 || hidden.length > 0) && <div className={`${container} pb-16`}>{switchSection}</div>}
         <DispatchToasts items={items} />
       </>
@@ -105,14 +104,22 @@ export default async function Overview({ params }: { params: Promise<{ installat
   }
 
   const c = totals.c24;
-  const mine = all.filter((w) => w.status === 'active' || w.status === 'limited' || w.status === 'needs_fix')
+  const mode = shownWfs.length >= 4 ? 'rows' : shownWfs.length === 1 && shownWfs[0].status === 'active' ? 'spotlight' : 'cards';
+  const tz = await knownZone(db, viewerZone((await cookies()).get('tz')?.value));
+  const carded = mode === 'rows' ? [] : shownWfs.filter((w) => w.status === 'active');
+  const [slots, days] = await Promise.all([
+    recentSlots(db, id, now, mode === 'spotlight' ? 96 : STRIP),
+    carded.length ? dailyCells(db, id, carded.map((w) => w.id), now, tz, inst.plan === 'pro' ? 30 : 7) : new Map<number, DayCell[]>(),
+  ]);
+  const mine = shownWfs
     .map((w) => ({ w, st: rowStatus(w.status, slots.get(w.id) ?? [], now) }))
     .sort((a, b) => a.st.rank - b.st.rank)
     .map((x) => x.w);
-  const bench = report?.schedules.filter((r) => r.stats.expected > 0 && r.stats.p50Sec !== null).sort((a, b) => b.stats.expected - a.stats.expected)[0];
+  const rows = mode === 'rows' ? mine : mine.filter((w) => w.status !== 'active');
+  const bench = report ? benchmarkSummary(report) : null;
   const summary = c.due
-    ? [`${c.onTime} of ${plural(c.due, 'run')} sent on time`, totals.medianDelayMs !== null && `median delay ${fmtDelay(totals.medianDelayMs)}`,
-      c.failed ? `${plural(c.failed, 'job')} failed on GitHub` : c.passed ? 'no failed jobs' : null, 'last 24 h'].filter(Boolean).join(' · ')
+    ? [`${c.onTime} of ${plural(c.due, 'run')} sent on time`, totals.medianDelayMs !== null && `median delay ${fmtDelay(totals.medianDelayMs)} over ${plural(c.onTime + c.late, 'sent run')}`,
+      c.failed ? `${plural(c.failed, 'GitHub run')} failed` : c.passed ? 'no failed GitHub runs' : null, 'last 24 h'].filter(Boolean).join(' · ')
     : null;
   const nk = totals.nextKick;
   return (
@@ -142,7 +149,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
           <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
             <h2 id="schedules" className="text-base/6 font-semibold">Schedules <span className="font-normal text-zinc-400">· {mine.length}</span></h2>
             <div className="flex items-center gap-x-4 text-[13px]/5 text-zinc-400">
-              <span>Strips show the last {STRIP} runs</span>
+              {mode === 'rows' && <span>Strips show the last {STRIP} runs</span>}
               <StatusKey />
             </div>
           </div>
@@ -151,20 +158,35 @@ export default async function Overview({ params }: { params: Promise<{ installat
               Cronkick can’t see any repositories, so nothing will be sent. <a href={manageReposUrl(inst)} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Choose repositories on GitHub ↗</a>
             </p>
           )}
+          {carded.length > 0 && (
+            <div className="mt-3 space-y-4">
+              {mine.filter((w) => w.status === 'active').map((w) => (
+                <ScheduleCard key={w.id} w={w} installationId={id} slots={slots.get(w.id) ?? []} days={days.get(w.id) ?? []} zone={tzAbbrev(tz, now)} gaps={totals.gaps} now={now} spotlight={mode === 'spotlight'} />
+              ))}
+            </div>
+          )}
           <ul role="list" className="mt-3 divide-y divide-white/5 overflow-hidden rounded-xl inset-ring inset-ring-white/10 empty:hidden">
-            {mine.map((w) => <ScheduleRow key={w.id} w={w} installationId={id} slots={slots.get(w.id) ?? []} gaps={totals.gaps} limit={limits.schedules} now={now} />)}
+            {rows.map((w) => <ScheduleRow key={w.id} w={w} installationId={id} slots={slots.get(w.id) ?? []} gaps={totals.gaps} limit={limits.schedules} now={now} />)}
           </ul>
           {!inst.alert_email && mine.some((w) => w.status === 'limited') && <p className="mt-3 text-[13px]/5 text-zinc-400"><AlertHint id={id} /></p>}
         </section>
 
         {switchSection}
 
-        <p className="text-[13px]/5 text-zinc-400">
-          {bench
-            ? <>In our probe repos, GitHub’s own <code className="font-mono text-zinc-300">schedule:</code> ({humanCron(bench.cron).toLowerCase()}) started a median {fmtDuration(bench.stats.p50Sec! * 1000)} late this week. </>
-            : <>How late is GitHub’s own <code className="font-mono text-zinc-300">schedule:</code>? </>}
-          <Link href="/lateness" className="inline-flex min-h-11 items-center font-medium text-white underline decoration-white/30 underline-offset-2 hover:decoration-white sm:min-h-0">See the benchmark</Link>
-        </p>
+        {/* Context, not a claim: what GitHub's own scheduler did in our probe repos, collapsed below the user's own runs. */}
+        {bench && (
+          <details className="group rounded-xl text-[13px]/5 text-zinc-400 inset-ring inset-ring-white/10">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-x-2 px-4 py-2.5 [&::-webkit-details-marker]:hidden">
+              <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500 transition group-open:rotate-90" />
+              <span><span className="font-medium text-zinc-200">GitHub’s own <code className="font-mono">schedule:</code></span> in our probe repos · {bench.summary}</span>
+            </summary>
+            <div className="space-y-2 border-t border-white/5 px-4 py-3">
+              <p>This is the benchmark for what Cronkick replaces. It measures something different from your numbers above: from a <code className="font-mono">schedule:</code> time to GitHub creating the run, in public repos we run for this purpose. Your numbers measure from the scheduled time to GitHub accepting Cronkick’s request.</p>
+              <p>{bench.sample}</p>
+              <Link href="/lateness" className="inline-flex min-h-11 items-center font-medium text-white underline decoration-white/30 underline-offset-2 hover:decoration-white sm:min-h-0">See the full benchmark</Link>
+            </div>
+          </details>
+        )}
       </div>
       <DispatchToasts items={items} />
     </>

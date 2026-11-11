@@ -1,5 +1,5 @@
 'use client';
-import { Fragment, useEffect, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { CoverageGap, SlotView, Tick } from '@/lib/data';
 import { fmtDelay, gapMarks } from '@/lib/live';
 import { SLOT_LABEL } from './ui';
@@ -14,7 +14,7 @@ const WORD: Record<Tick, string> = {
 };
 /** "+0.4 s" for a sent run; "—" when nothing was sent. */
 const delay = (s: SlotView) => (s.sendDelayMs !== null ? `sent ${fmtDelay(s.sendDelayMs)}${s.tick === 'late' ? ' (late)' : ''}` : '');
-const job = (c: string | null) => (c === 'success' ? 'job passed' : c ? `job ${c.replace('_', ' ')}` : '');
+const job = (c: string | null) => (c === 'success' ? 'run passed' : c ? `run ${c.replace('_', ' ')}` : '');
 /**
  * The last runs of one schedule, oldest to newest, right-aligned in `positions` places. A dashed track fills the time
  * before tracking started; a hatched divider marks a Cronkick coverage gap between two runs (the strip counts runs, not
@@ -23,9 +23,14 @@ const job = (c: string | null) => (c === 'success' ? 'job passed' : c ? `job ${c
  * Read-only by default (an image with a text summary). `interactive` makes it one tab stop: arrow keys, Home and End
  * pick a run, and the panel underneath says what happened and links to it in the history.
  */
-export function LiveStrip({ slots, positions = 48, height = 'h-7', gaps = [], interactive = false, label = 'runs' }: {
+export function LiveStrip({ slots, positions = 48, height = 'h-7', gaps = [], interactive = false, label = 'runs', historyHref = '', keep = '' }: {
   slots: SlotView[]; positions?: number; height?: string; gaps?: CoverageGap[]; interactive?: boolean; label?: string;
+  /** The workflow page, when the strip isn't on it; "Open in history" then goes there. */
+  historyHref?: string;
+  /** Query to keep when jumping to a run (the analysis range); a day filter is dropped on purpose, the run may be on another day. */
+  keep?: string;
 }) {
+  const open = useRef<HTMLAnchorElement>(null);
   const fresh = useArrivals(slots.map((s) => s.id));
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -41,7 +46,7 @@ export function LiveStrip({ slots, positions = 48, height = 'h-7', gaps = [], in
   const summary = `Last ${shown.length} ${label}: ${parts.join(', ') || 'none yet'}`;
 
   const key = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('open-run')?.click(); return; }
+    if (e.key === 'Enter') { e.preventDefault(); open.current?.click(); return; }
     const to = { ArrowLeft: pick - 1, ArrowRight: pick + 1, Home: 0, End: shown.length - 1 }[e.key];
     if (to === undefined) return;
     e.preventDefault();
@@ -86,7 +91,7 @@ export function LiveStrip({ slots, positions = 48, height = 'h-7', gaps = [], in
           <p className="flex flex-wrap items-center gap-x-2">
           <span className="text-zinc-400">Selected</span>
           <span className="tabular-nums">{tip(s)}</span>
-          <a id="open-run" href={`?before=${encodeURIComponent(new Date(Date.parse(s.due) + 1).toISOString())}#slot-${s.id}`}
+          <a ref={open} href={`${historyHref}?${keep ? `${keep}&` : ''}before=${encodeURIComponent(new Date(Date.parse(s.due) + 1).toISOString())}#slot-${s.id}`}
             onClick={(e) => {
               const row = document.getElementById(`slot-${s.id}`);
               if (!row) return; // not on this page: follow the link to the page that starts with it

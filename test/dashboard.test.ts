@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
-import { accountHealth, activity, exceptions, overview, recentSlots, setDismissed, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
+import { accountHealth, activity, dailyCells, dayBounds, knownZone, exceptions, nextRuns, overview, rangeStats, recentSlots, setDismissed, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
 import { VERDICT } from '../web/lib/format.ts';
 import { decodeSession, encodeSession } from '../web/lib/session.ts';
 import { freshDb, seed } from './helpers.ts';
@@ -87,6 +87,13 @@ test('overview and history: a coverage gap in range is shown, but never sets the
   const gap = { start: ago(60 * 5).toISOString(), end: ago(60 * 2).toISOString() };
   expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [gap] });
   expect((await workflowHistory(db, 1, 100, NOW))!.gaps).toHaveLength(2); // Pro shows 90 days
+});
+
+test('coverage gaps: one that began before the account was created starts at its creation', async () => {
+  await seed(db);
+  await db.query('UPDATE installations SET created_at = $1 WHERE id = 1', [ago(60 * 28)]);
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 30), ago(60 * 26)]);
+  expect((await workflowHistory(db, 1, 100, NOW))!.gaps).toEqual([{ start: ago(60 * 28).toISOString(), end: ago(60 * 26).toISOString() }]);
 });
 
 test('overview: nothing scheduled, needs-fix wins, and two workflows due together', async () => {
@@ -498,4 +505,84 @@ test('a weekly schedule on its off days is quiet, not "waiting for the first run
   await db.query('DELETE FROM slots'); // never ran: the first-run page, and its verdict says so
   expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'no_runs', firstRun: true });
   expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('no_runs');
+});
+
+test('recent strips stop at the plan history window; one workflow can be asked for alone', async () => {
+  await seed(db, { plan: 'free' });
+  await db.query(`INSERT INTO workflows (id, repo_id, path, name) VALUES (101, 10, '.github/workflows/b.yml', 'b')`);
+  for (const d of [1, 3, 6, 8, 20]) await slot(d * 24 * 60, 'fired', 1);
+  await slot(60, 'fired', 1, 101);
+  expect((await recentSlots(db, 1, NOW, 96)).get(100)).toHaveLength(3); // Free: 7 days
+  await db.query(`UPDATE installations SET plan = 'pro'`);
+  expect((await recentSlots(db, 1, NOW, 96)).get(100)).toHaveLength(5);
+  const one = await recentSlots(db, 1, NOW, 96, 101);
+  expect([...one.keys()]).toEqual([101]);
+});
+
+test('next runs: five in order, across a DST change without a repeat, none when nothing is active', () => {
+  const at = new Date('2026-11-10T14:07:00Z');
+  expect(nextRuns([{ cron: '*/15 * * * *', tz: 'UTC', status: 'active' }], at).map((t) => t.slice(11, 16))).toEqual(['14:15', '14:30', '14:45', '15:00', '15:15']);
+  const berlin = nextRuns([{ cron: '30 2 * * *', tz: 'Europe/Berlin', status: 'active' }], new Date('2026-10-24T12:00:00Z'), 3);
+  expect(new Set(berlin).size).toBe(3);
+  expect(berlin.map((t) => t.slice(0, 10))).toEqual(['2026-10-25', '2026-10-26', '2026-10-27']);
+  expect(nextRuns([{ cron: '*/15 * * * *', tz: 'UTC', status: 'paused_limit' }], at)).toEqual([]);
+});
+
+test('daily cells: viewer-zone days, worst dispatch state, GitHub failures apart, gaps add no runs, nothing before tracking', async () => {
+  await seed(db); // Pro; NOW = 2026-11-10 12:00 UTC
+  const at = (iso: string) => (NOW.getTime() - Date.parse(iso)) / 60_000;
+  await slot(at('2026-11-09T23:30:00Z'), 'fired', 1);          // Nov 9 in UTC, Nov 10 in Kolkata (05:00)
+  await slot(at('2026-11-09T10:00:00Z'), 'fired', 40);         // late, Nov 9
+  await slot(at('2026-11-09T11:00:00Z'), 'accepted', 1, 100, 1, 10, 'failure'); // on time, GitHub run failed
+  await slot(at('2026-11-08T10:00:00Z'), 'fired', 1);          // first record: Nov 8
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, ['2026-11-07T10:00:00Z', '2026-11-07T11:00:00Z']);
+  const utc = (await dailyCells(db, 1, [100], NOW, 'UTC', 7)).get(100)!;
+  expect(utc.map((d) => d.day)).toEqual(['2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09', '2026-11-10']);
+  const day = (d: string) => utc.find((x) => x.day === d)!;
+  expect(day('2026-11-09')).toMatchObject({ state: 'late', c: { due: 3, onTime: 2, late: 1, failed: 1 } });
+  expect(day('2026-11-08')).toMatchObject({ state: 'ontime', c: { due: 1 } });
+  expect(day('2026-11-07')).toMatchObject({ state: 'none', gap: true, c: { due: 0 } }); // before the first record; the gap adds nothing
+  expect(day('2026-11-10')).toMatchObject({ today: true, state: 'empty' });
+  const kolkata = (await dailyCells(db, 1, [100], NOW, 'Asia/Kolkata', 7)).get(100)!;
+  expect(kolkata.find((x) => x.day === '2026-11-10')!.c.due).toBe(1); // the 23:30 UTC run is the 10th there
+  expect(kolkata.find((x) => x.day === '2026-11-09')!.c.due).toBe(2);
+});
+
+test('range stats: counts, delay percentiles with their sample, half-second bins with 30 s on time and later apart', async () => {
+  await seed(db);
+  const delays = [0, 0.499, 0.5, 29.999, 30, 30.001, 90];
+  for (const [i, sec] of delays.entries()) await slot(10 + i, 'fired', sec);
+  await slot(100, 'expired', null);
+  const r = await rangeStats(db, 100, NOW, ago(24 * 60));
+  expect(r.n).toBe(7);
+  expect(r.bins[0]).toBe(2);   // 0 and 499 ms
+  expect(r.bins[1]).toBe(1);   // 500 ms
+  expect(r.bins[59]).toBe(2);  // 29 999 and exactly 30 000 ms
+  expect(r.bins.reduce((a, b) => a + b, 0)).toBe(5);
+  expect(r).toMatchObject({ over: 2, max: 90_000, c: { due: 8, onTime: 5, late: 2, gaveUp: 1 } });
+  expect(r.p50).toBe(29_999);
+  // GitHub's part, apart from dispatch: sent runs with no reported result, and neutral/skipped results, are named as such.
+  expect(r).toMatchObject({ unreported: 7, other: 0 });
+  await slot(200, 'accepted', 1, 100, 1, 10, 'neutral');
+  await slot(210, 'accepted', 1, 100, 1, 10, 'skipped');
+  expect(await rangeStats(db, 100, NOW, ago(24 * 60))).toMatchObject({ other: 2, unreported: 7, c: { passed: 0, failed: 0, gaveUp: 1 } });
+});
+
+test('history for one day: only that day, counts and paging inside it, an empty day is empty', async () => {
+  await seed(db);
+  for (const h of [1, 5, 20, 26, 30]) await slot(h * 60, 'fired', 1); // NOW 12:00 UTC Nov 10: Nov 10 11:00, 07:00; Nov 9 16:00, 10:00, 06:00
+  const nov9 = (await dayBounds(db, '2026-11-09', 'UTC'))!;
+  const h = (await workflowHistory(db, 1, 100, NOW, undefined, undefined, undefined, nov9))!;
+  expect(h.slots.map((x) => x.due.slice(0, 13))).toEqual(['2026-11-09T16', '2026-11-09T10', '2026-11-09T06']);
+  expect(h).toMatchObject({ hasNewer: false, hasOlder: false, filterCounts: { all: 3 } });
+  const empty = (await workflowHistory(db, 1, 100, NOW, undefined, undefined, undefined, (await dayBounds(db, '2026-11-01', 'UTC'))!))!;
+  expect(empty.slots).toEqual([]);
+  // In Kolkata, Nov 10 starts at 18:30 UTC on the 9th.
+  expect((await dayBounds(db, '2026-11-10', 'Asia/Kolkata'))!.from.toISOString()).toBe('2026-11-09T18:30:00.000Z');
+  for (const bad of ['2026-02-30', '2026-11-9', 'today', undefined]) expect(await dayBounds(db, bad, 'UTC')).toBeNull();
+});
+
+test('a zone the browser knows but Postgres does not falls back to UTC instead of failing the page', async () => {
+  expect(await knownZone(db, 'Asia/Kolkata')).toBe('Asia/Kolkata');
+  expect(await knownZone(db, 'US/Pacific-New')).toBe('UTC');
 });

@@ -67,6 +67,16 @@ export function fmtSpan(ms: number): string {
   return `${Math.floor(h / 24)} days`;
 }
 
+/** The viewer's IANA time zone from the `tz` cookie, if it names a real zone; UTC otherwise. */
+export function viewerZone(cookie: string | undefined): string {
+  if (!cookie || cookie.length > 64) return 'UTC';
+  // Keep the name as given (ICU may canonicalise Asia/Kolkata to Asia/Calcutta); Postgres knows both. Only names, so
+  // nothing but a zone ever reaches SQL (as a bound parameter).
+  // Area/Location names only: offsets like "+0530" or "-03" mean the opposite sign to Postgres (POSIX) and are refused.
+  if (cookie !== 'UTC' && !/^[A-Za-z]+(\/[A-Za-z0-9_+\-]+){1,2}$/.test(cookie)) return 'UTC';
+  try { new Intl.DateTimeFormat('en-US', { timeZone: cookie }); return cookie; } catch { return 'UTC'; }
+}
+
 /** "1 run", "3 runs"; pass the plural when it isn't just an added s. */
 export const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 

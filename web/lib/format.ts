@@ -1,6 +1,6 @@
 import type { ProbeReport } from '../../src/probe/collector.ts';
 import type { Counts24, SlotView, Verdict, WorkflowStatus } from './data.ts';
-import { fmtAge, plural } from './live.ts';
+import { fmtAge, fmtDuration, humanCron, plural } from './live.ts';
 
 export const appSlug = () => process.env.GITHUB_APP_SLUG ?? 'cronkick';
 export const installUrl = () => `https://github.com/apps/${appSlug()}/installations/new`;
@@ -75,4 +75,47 @@ export function rowStatus(status: WorkflowStatus, slots: Pick<SlotView, 'tick' |
   const old = kinds.find(([t]) => hits(t).length);
   if (old) return { word: `${hits(old[0]).length} ${old[1]} · ${fmtAge(age(old[0]))} ago`, ...QUIET, rank: 3 };
   return { word: `${due.length} of ${due.length} on time`, dot: 'bg-emerald-400', text: 'text-zinc-200', rank: 3 };
+}
+
+/**
+ * How to say what runs next: a steady cadence under an hour reads as one line ("then every 15 min"); anything slower
+ * or irregular lists the next times. `upcoming` is ISO times, soonest first.
+ */
+export function nextPlan(upcoming: string[]): { kind: 'none' } | { kind: 'every'; next: string; minutes: number } | { kind: 'list'; times: string[] } {
+  if (!upcoming.length) return { kind: 'none' };
+  const gaps = upcoming.slice(1).map((t, i) => (Date.parse(t) - Date.parse(upcoming[i])) / 60_000);
+  const steady = gaps.length > 0 && gaps.every((g) => g === gaps[0]) && gaps[0] < 60;
+  return steady ? { kind: 'every', next: upcoming[0], minutes: gaps[0] } : { kind: 'list', times: upcoming };
+}
+
+/**
+ * The newest run that has an outcome, in words, keeping Cronkick's part (dispatch) and GitHub's part (the run's
+ * result) apart. Null when nothing has an outcome yet.
+ */
+export function latestRun(slots: Pick<SlotView, 'state' | 'display' | 'conclusion' | 'runMs' | 'runUrl' | 'due'>[]):
+  { due: string; text: string; tone: 'ok' | 'bad' | 'quiet'; runUrl: string | null } | null {
+  const s = [...slots].reverse().find((x) => !['pending', 'dispatching', 'waiting', 'skipped'].includes(x.display));
+  if (!s) return null;
+  const took = s.runMs !== null ? ` · ${fmtDuration(s.runMs)}` : '';
+  if (s.state === 'fired' || s.state === 'accepted') {
+    if (!s.conclusion) return { due: s.due, text: 'Sent; GitHub result not reported yet', tone: 'quiet', runUrl: s.runUrl };
+    const ok = ['success', 'neutral', 'skipped'].includes(s.conclusion);
+    return { due: s.due, text: `${s.conclusion === 'success' ? 'Passed' : ok ? s.conclusion : s.conclusion === 'failure' ? 'Failed' : s.conclusion.replace('_', ' ')} on GitHub${took}`, tone: ok ? 'ok' : 'bad', runUrl: s.runUrl };
+  }
+  const words: Record<string, string> = { overdue: 'Overdue: not sent yet', unknown: 'Unconfirmed: sent, GitHub didn’t confirm', rejected: 'Refused by GitHub', expired: 'Not sent before its deadline' };
+  return { due: s.due, text: words[s.display] ?? s.display, tone: s.display === 'unknown' ? 'quiet' : 'bad', runUrl: null };
+}
+
+/**
+ * GitHub's own scheduler in our probe repos, in words: one cohort per probe schedule ("every 5 minutes: median 2 min
+ * 35 s late, 7.6% never ran"). Null when no repo contributes, so nothing is shown rather than nothing measured.
+ */
+export function benchmarkSummary(r: ProbeReport, now = new Date()): { summary: string; sample: string } | null {
+  const cohorts = r.schedules.filter((x) => x.stats.expected > 0 && x.stats.p50Sec !== null);
+  if (!cohorts.length || !r.contributing) return null;
+  const pct = (x: number) => `${(x * 100).toFixed(1).replace(/\.0$/, '')}%`;
+  return {
+    summary: cohorts.map((x) => `${humanCron(x.cron).toLowerCase()}: median ${fmtDuration(x.stats.p50Sec! * 1000)} late, ${pct(x.stats.missingShare)} never ran`).join(' · '),
+    sample: probeSample(r, now),
+  };
 }
