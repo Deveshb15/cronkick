@@ -80,11 +80,15 @@ export async function planAhead(db: Db, now: Date): Promise<void> {
  */
 export async function refreshSlots(db: Db, installationId: number, now: Date): Promise<void> {
   const from = new Date(now.getTime() - LOOKBACK_MS);
-  await db.query(
-    `DELETE FROM slots WHERE installation_id = $1 AND due_at > $2 AND (state = 'skipped' OR (state = 'pending' AND attempts = 0))`,
-    [installationId, from],
-  );
-  await materialize(db, from, installationId);
+  await tx(db, async (c) => {
+    // Wait for a running planAhead: its uncommitted slots, possibly for a schedule just removed, would escape the delete.
+    await c.query('SELECT 1 FROM planner FOR UPDATE');
+    await c.query(
+      `DELETE FROM slots WHERE installation_id = $1 AND due_at > $2 AND (state = 'skipped' OR (state = 'pending' AND attempts = 0))`,
+      [installationId, from],
+    );
+    await materialize(c, from, installationId);
+  });
 }
 
 /** Prune old history. Pending past the deadline -> expired. Lease lost mid-call -> unknown (never fire it again, R8). */
