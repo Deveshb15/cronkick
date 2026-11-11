@@ -10,7 +10,8 @@ import { saveAlertEmail } from './actions';
 
 export const dynamic = 'force-dynamic';
 
-const container = 'mx-auto max-w-4xl px-4 sm:px-6 lg:px-10';
+// Same left edge as the overview; the content itself stays a readable width.
+const container = 'mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 *:max-w-3xl';
 const card = 'relative rounded-2xl bg-zinc-950 p-6 inset-ring inset-ring-white/10';
 
 export async function generateMetadata({ params }: { params: Promise<{ installationId: string }> }): Promise<Metadata> {
@@ -33,13 +34,19 @@ export default async function Settings({ params }: { params: Promise<{ installat
     ['Email alerts', 'plan limit only', 'missed and failed runs'],
   ];
   return (
-    <div className={`${container} space-y-6 py-12`}>
+    <div className={`${container} space-y-6 pt-8 pb-16 sm:pt-10`}>
       <div>
-        <p className="font-mono text-[0.6875rem]/5 tracking-wider text-zinc-500 uppercase">{inst.account_login} · Settings</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
+        <p className="text-[13px]/5 text-zinc-400">{inst.account_login}</p>
+        <h1 className="mt-1 text-2xl/8 font-semibold tracking-tight">Settings</h1>
       </div>
 
-      <section className={free ? `${card} border-spin` : card}>
+      <section className={card}>
+        <h2 className="text-base/7 font-semibold">Alert email</h2>
+        <p className="mt-1 mb-4 text-sm/6 text-zinc-400">{free ? 'On Free we email you here when a schedule pauses at the plan limit. Missed-run and failed-run alerts are part of Pro.' : 'Where we send missed-run and failed-run alerts.'}</p>
+        <AlertEmailForm action={saveAlertEmail.bind(null, id)} initial={inst.alert_email ?? ''} />
+      </section>
+
+      <section className={card}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-base/7 font-semibold">Plan and usage</h2>
@@ -47,25 +54,22 @@ export default async function Settings({ params }: { params: Promise<{ installat
           </div>
           {free && (
             // ponytail: upgrades are manual until checkout (Polar/Dodo) is wired up.
-            <ButtonLink href={`mailto:hi@cronkick.xyz?subject=Upgrade%20${encodeURIComponent(inst.account_login)}%20to%20Pro`} variant="primary" className="btn-glow">Request Pro by email · $9/month</ButtonLink>
+            <ButtonLink href={`mailto:hi@cronkick.xyz?subject=Upgrade%20${encodeURIComponent(inst.account_login)}%20to%20Pro`} variant="primary" className="">Request Pro by email · $9/month</ButtonLink>
           )}
         </div>
         <div className="mt-5">
-          <div className="flex items-baseline justify-between text-sm/6"><span className="text-zinc-400">Schedules in use</span><span className="font-mono"><b className="font-medium">{used}</b><span className="text-zinc-500"> / {limits.schedules}</span></span></div>
+          <div className="flex items-baseline justify-between text-sm/6"><span className="text-zinc-400">Schedules in use</span><span className="font-mono"><b className="font-medium">{used}</b><span className="text-zinc-400"> of {limits.schedules}</span></span></div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-brand-500" style={{ width: `${Math.min(100, (used / limits.schedules) * 100)}%` }} /></div>
-          <p className="mt-2 text-xs/5 text-zinc-500">Each <code className="font-mono">#&nbsp;cronkick</code> line is one schedule, in any repository.</p>
+          <p className="mt-2 text-[13px]/5 text-zinc-400">Each <code className="font-mono">#&nbsp;cronkick</code> line is one schedule, in any repository.</p>
         </div>
-        <table className="mt-6 w-full text-left text-sm/6">
-          <thead className="text-xs/5 text-zinc-500"><tr className="border-b border-white/10"><th className="py-2 font-medium" /><th className={`font-medium ${free ? 'text-white' : ''}`}>Free</th><th className={`font-medium ${free ? '' : 'text-white'}`}>Pro · $9/mo</th></tr></thead>
-          <tbody className="divide-y divide-white/5">{rows.map(([k, f, p]) => <tr key={k}><td className="py-2 text-zinc-400">{k}</td><td className={free ? '' : 'text-zinc-500'}>{f}</td><td className={free ? 'text-zinc-500' : ''}>{p}</td></tr>)}</tbody>
+        <details className="group mt-6">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm/6 font-medium text-zinc-300 hover:text-white sm:min-h-0">Compare plans</summary>
+        <table className="mt-3 w-full text-left text-sm/6">
+          <thead className="text-[13px]/5 text-zinc-400"><tr className="border-b border-white/10"><th className="py-2 font-medium" /><th className={`font-medium ${free ? 'text-white' : ''}`}>Free</th><th className={`font-medium ${free ? '' : 'text-white'}`}>Pro · $9/mo</th></tr></thead>
+          <tbody className="divide-y divide-white/5">{rows.map(([k, f, p]) => <tr key={k}><td className="py-2 text-zinc-400">{k}</td><td className={free ? '' : 'text-zinc-400'}>{f}</td><td className={free ? 'text-zinc-400' : ''}>{p}</td></tr>)}</tbody>
         </table>
-        {free && <p className="mt-3 text-xs/5 text-zinc-500">Pro is turned on by hand for now: email us and we switch your account. There is no card checkout yet.</p>}
-      </section>
-
-      <section className={card}>
-        <h2 className="text-base/7 font-semibold">Alert email</h2>
-        <p className="mt-1 mb-4 text-sm/6 text-zinc-400">{free ? 'On Free we email you here when a schedule pauses at the plan limit. Missed-run and failed-run alerts are part of Pro.' : 'Where we send missed-run and failed-run alerts.'}</p>
-        <AlertEmailForm action={saveAlertEmail.bind(null, id)} initial={inst.alert_email ?? ''} />
+        </details>
+        {free && <p className="mt-3 text-[13px]/5 text-zinc-400">Pro is turned on by hand for now: email us and we switch your account. There is no card checkout yet.</p>}
       </section>
 
       <section className={card}>

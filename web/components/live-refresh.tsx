@@ -57,10 +57,10 @@ export function LiveRefresh({ installationId }: { installationId: number }) {
 
   const live = status === 'live';
   return (
-    <p className="flex items-center gap-x-2 font-mono text-xs/5 text-zinc-500" title={live ? 'Updates appear here as they happen' : 'Reconnecting to live updates'}>
+    <p className="flex items-center gap-x-2 text-xs/5 text-zinc-400" title={live ? 'New runs appear here as they happen' : 'Reconnecting to live updates'}>
       {/* Connected to updates, not a health check: no pulse. */}
-      <span className={`inline-flex size-2 rounded-full ${live ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-      {live ? 'Live updates' : status === 'connecting' ? 'Connecting…' : 'Reconnecting…'}
+      <span className={`inline-flex size-2 rounded-full ${live ? 'bg-zinc-400' : 'bg-zinc-600'}`} />
+      {live ? 'Updates connected' : status === 'connecting' ? 'Connecting…' : 'Reconnecting…'}
     </p>
   );
 }

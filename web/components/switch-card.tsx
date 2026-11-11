@@ -26,16 +26,16 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
   const [copied, setCopied] = useState(false);
   const after = c.tooFast && c.clamped && useClamped ? c.clamped : c.after;
   const copy = () => navigator.clipboard.writeText(body(after).join('\n')).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
-  const chip = (on: boolean) => `rounded-md px-2 py-1 transition ${on ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:text-white'}`;
+  const chip = (on: boolean) => `min-h-11 rounded-md px-2 py-1 transition sm:min-h-0 ${on ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:text-white'}`;
   return (
-    <details open={open} className="group/c rounded-xl bg-zinc-950/80 inset-ring inset-ring-white/10">
+    <details open={open} className="group/c rounded-xl bg-white/[0.02] inset-ring inset-ring-white/10">
       <summary className="flex cursor-pointer list-none items-center gap-x-3 px-4 py-3 text-sm/6 [&::-webkit-details-marker]:hidden">
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500 transition group-open/c:rotate-90" />
         <span className="font-medium">{c.name}</span>
-        <span className="min-w-0 truncate font-mono text-xs/5 text-zinc-500">{c.repo.split('/')[1]} · {c.path.split('/').pop()}</span>
+        <span className="min-w-0 truncate font-mono text-[13px]/5 text-zinc-400">{c.repo.split('/')[1]} · {c.path.split('/').pop()}</span>
         {c.tooFast
           ? <span className="ml-auto shrink-0 rounded-md bg-orange-400/10 px-1.5 py-0.5 text-xs/5 font-medium text-orange-300 inset-ring inset-ring-orange-400/20">{plan === 'free' ? 'Too fast for Free' : 'Too fast for your plan'}</span>
-          : <span className="ml-auto shrink-0 font-mono text-xs/5 text-zinc-500">{c.cadence}</span>}
+          : <span className="ml-auto shrink-0 font-mono text-[13px]/5 text-zinc-400">{c.cadence}</span>}
       </summary>
       <div className="grid gap-5 border-t border-white/5 p-4 lg:grid-cols-[minmax(0,1fr)_15rem]">
         <div className="min-w-0">
@@ -49,12 +49,12 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
             )}
           </div>
           <div className="mt-3"><Diff before={c.before} after={after} /></div>
-          <p className="mt-2 text-xs/5 text-zinc-500">Keep your other triggers (push, pull_request…) as they are. Removing <code className="font-mono">schedule:</code> stops GitHub running it a second time, late.</p>
+          <p className="mt-2 text-[13px]/5 text-zinc-400">Keep your other triggers (push, pull_request…) as they are. Removing <code className="font-mono">schedule:</code> stops GitHub running it a second time, late.</p>
         </div>
         <div className="flex flex-col gap-2">
-          <button type="button" onClick={copy} className="rounded-lg bg-brand-500 px-3 py-2 text-sm/6 font-semibold text-ink transition hover:bg-brand-400">{copied ? 'Copied ✓' : 'Copy these lines'}</button>
-          <a href={c.editUrl} className="rounded-lg bg-white/5 px-3 py-2 text-center text-sm/6 inset-ring inset-ring-white/10 transition hover:bg-white/10">Edit file on GitHub ↗</a>
-          <button type="button" disabled={hiding} onClick={() => startHide(() => hide(c.id, true))} className="text-left text-xs/5 text-zinc-500 hover:text-zinc-300 disabled:opacity-50 lg:order-last lg:mt-auto">
+          <button type="button" onClick={copy} className="min-h-11 rounded-lg bg-brand-500 px-3 py-2 text-sm/6 font-semibold text-ink transition hover:bg-brand-400 sm:min-h-0">{copied ? 'Copied ✓' : 'Copy these lines'}</button>
+          <a href={c.editUrl} className="flex min-h-11 items-center justify-center rounded-lg bg-white/5 px-3 py-2 text-center sm:min-h-0 text-sm/6 inset-ring inset-ring-white/10 transition hover:bg-white/10">Edit file on GitHub ↗</a>
+          <button type="button" disabled={hiding} onClick={() => startHide(() => hide(c.id, true))} className="min-h-11 text-left text-[13px]/5 text-zinc-400 hover:text-zinc-300 disabled:opacity-50 sm:min-h-0 lg:order-last lg:mt-auto">
             {hiding ? 'Hiding…' : 'Keep it on GitHub · hide from this list'}
           </button>
           {c.tooFast && (
@@ -78,7 +78,7 @@ export function SwitchSection({ candidates, hidden, plan, floor, hide }: {
   if (!candidates.length && !hidden.length) return null;
   const n = candidates.length;
   const hiddenList = hidden.length > 0 && (
-    <details className="group/h text-xs/5 text-zinc-500">
+    <details className="group/h text-[13px]/5 text-zinc-400">
       <summary className="cursor-pointer list-none hover:text-zinc-300 [&::-webkit-details-marker]:hidden">{hidden.length} kept on GitHub · show</summary>
       <ul role="list" className="mt-2 space-y-1">
         {hidden.map((h) => (
@@ -92,14 +92,14 @@ export function SwitchSection({ candidates, hidden, plan, floor, hide }: {
   );
   if (!n) return <div className="px-1">{hiddenList}</div>;
   return (
-    <details className="group rounded-2xl bg-brand-500/[0.05] inset-ring inset-ring-brand-500/20">
+    <details className="group rounded-xl inset-ring inset-ring-white/10">
       <summary className="flex cursor-pointer list-none items-center gap-x-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
-        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-brand-400 transition group-open:rotate-90" />
+        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-400 transition group-open:rotate-90" />
         <span className="min-w-0 flex-1">
           <span className="block text-sm/6 font-medium">{n} workflow{n === 1 ? '' : 's'} still run{n === 1 ? 's' : ''} on GitHub’s schedule</span>
-          <span className="block text-xs/5 text-zinc-400">GitHub’s <code className="font-mono text-zinc-300">schedule:</code> often starts late or skips runs. Moving one over is two small edits.</span>
+          <span className="block text-[13px]/5 text-zinc-400">GitHub’s <code className="font-mono text-zinc-300">schedule:</code> often starts late or skips runs. Moving one over is two small edits.</span>
         </span>
-        <span className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-xs/5 font-semibold text-ink group-open:hidden">Review</span>
+        <span className="shrink-0 rounded-lg bg-white/5 px-3 py-1.5 text-[13px]/5 font-medium text-zinc-100 inset-ring inset-ring-white/10 group-open:hidden">Review</span>
       </summary>
       <div className="space-y-2 px-5 pb-5">
         {candidates.map((c, i) => <CandidateRow key={c.id} c={c} open={i === 0} plan={plan} floor={floor} hide={hide} />)}

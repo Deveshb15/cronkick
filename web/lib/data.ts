@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { PLANS, type PlanName } from '../../src/plans.ts';
-import { nextDue, planSlots } from '../../src/slots.ts';
+import { nextDue } from '../../src/slots.ts';
 
 /** Colour of one slot in the dashboard strips. */
 export type Tick = 'ontime' | 'late' | 'waiting' | 'overdue' | 'unconfirmed' | 'missed' | 'idle';
@@ -116,22 +116,21 @@ export type WorkflowRow = {
   status: WorkflowStatus; c24: Counts24; health: WorkflowHealth; nextDue: string | null; dismissed: boolean;
 };
 export type RepoRow = { id: number; full_name: string; default_branch: string; workflows: WorkflowRow[] };
-export type Verdict = 'nothing_scheduled' | 'needs_fix' | 'coverage_gap' | Health;
-/** One workflow's last 24 h: a fix it needs and a Cronkick outage outrank its own counts. */
-export type WorkflowHealth = Exclude<Verdict, 'nothing_scheduled'>;
-const workflowHealth = (needsFix: boolean, gaps: number, c24: Counts24): WorkflowHealth => (needsFix ? 'needs_fix' : gaps ? 'coverage_gap' : healthOf(c24));
-/** The gaps, clipped to the last 24 h, in which the workflow's active schedules had a due time: only those can have cost it a run. */
-const gapsDue = (gaps: CoverageGap[], schedules: Schedule[], now: Date): number => {
-  const active = schedules.filter((s) => s.status === 'active');
-  return gaps.filter((g) => planSlots(0, active, new Date(Math.max(Date.parse(g.start), now.getTime() - DAY_MS)), new Date(Math.min(Date.parse(g.end), now.getTime()))).length).length;
-};
+/** `quiet`: live schedules and earlier runs, but nothing came due in the last 24 h (a weekly job on its off days). */
+export type Verdict = 'nothing_scheduled' | 'needs_fix' | 'quiet' | Health;
+/**
+ * One workflow's last 24 h: a fix it needs outranks its own counts. A Cronkick coverage gap is never a health: nobody
+ * knows what it cost, so it is shown on its own (notice, strip separator, history annotation), not as this workflow's status.
+ */
+export type WorkflowHealth = Exclude<Verdict, 'nothing_scheduled' | 'quiet'>;
+const workflowHealth = (needsFix: boolean, c24: Counts24): WorkflowHealth => (needsFix ? 'needs_fix' : healthOf(c24));
 
 /**
  * The account verdict; overview and the account switcher both use it, so they can't disagree.
  * Incidents come first, then what was due; "nothing scheduled" only when nothing was due either.
  */
-const verdictOf = (v: { liveSchedules: number; needsFix: boolean; gaps: number; c24: Counts24 }): Verdict => (
-  v.needsFix || v.gaps || v.c24.due ? workflowHealth(v.needsFix, v.gaps, v.c24) : v.liveSchedules ? 'no_runs' : 'nothing_scheduled');
+const verdictOf = (v: { liveSchedules: number; needsFix: boolean; c24: Counts24; anyDue: boolean }): Verdict => (
+  v.needsFix || v.c24.due ? workflowHealth(v.needsFix, v.c24) : !v.liveSchedules ? 'nothing_scheduled' : v.anyDue ? 'quiet' : 'no_runs');
 
 /** 24 h counts over all slots of each installation, whatever its workflow or repo has become since (R8). */
 async function installCounts(db: pg.Pool, ids: number[], now: Date): Promise<Map<number, Counts24>> {
@@ -204,7 +203,7 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
     const c24 = stats.get(Number(w.id)) ?? counts(null);
     repo.workflows.push({
       id: Number(w.id), repo: repo.full_name, name: w.name, path: w.path, flags: w.flags, suggested_diff: w.suggested_diff, schedules: w.schedules,
-      status, c24, health: workflowHealth(status === 'needs_fix', gapsDue(gaps, w.schedules, now), c24), nextDue: nextFor(w.schedules, sending && status === 'active', now), dismissed: w.dismissed,
+      status, c24, health: workflowHealth(status === 'needs_fix', c24), nextDue: nextFor(w.schedules, sending && status === 'active', now), dismissed: w.dismissed,
     });
   }
 
@@ -221,9 +220,9 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
     alsoDue: upcoming.filter((w) => w.nextDue === first.nextDue).length - 1,
   } : null;
 
-  const verdict = verdictOf({ liveSchedules: activeSchedules, needsFix: all.some((w) => w.status === 'needs_fix'), gaps: gaps.length, c24 });
-  const d = delays.rows[0];
   const any = anyDue.rows[0].any as boolean;
+  const verdict = verdictOf({ liveSchedules: activeSchedules, needsFix: all.some((w) => w.status === 'needs_fix'), c24, anyDue: any });
+  const d = delays.rows[0];
   const totals = {
     activeSchedules,
     c24,
@@ -256,41 +255,71 @@ export async function activity(db: pg.Pool, installationId: number, now: Date, l
   return rows.map((r) => ({ ...slotView(r, now), workflow: r.workflow, repo: r.repo }));
 }
 
+/** Why a due slot needs attention, most serious first. */
+export type ExceptionReason = 'overdue' | 'missed' | 'unconfirmed' | 'failed' | 'late';
+export type ExceptionItem = ActivityItem & { reason: ExceptionReason };
+const FAILED = `conclusion IS NOT NULL AND conclusion NOT IN ('success', 'neutral', 'skipped')`;
+const LATE = `state IN ('fired', 'accepted') AND fired_at - due_at > interval '30 seconds'`;
+const REASON = `CASE WHEN ${OVERDUE} THEN 'overdue' WHEN state IN ('rejected', 'expired') THEN 'missed' WHEN state = 'unknown' THEN 'unconfirmed'
+                     WHEN ${FAILED} THEN 'failed' WHEN ${LATE} THEN 'late' END`;
+
+/**
+ * Every due slot of the last 24 h that needs a look, most serious first, then newest. Queried over the whole window
+ * before the limit, so an old problem behind many successes is never hidden; `more` counts what didn't fit.
+ */
+export async function exceptions(db: pg.Pool, installationId: number, now: Date, limit = 6): Promise<{ items: ExceptionItem[]; more: number }> {
+  const { rows } = await db.query(
+    `SELECT *, count(*) OVER () AS total FROM (
+       SELECT s.id, s.workflow_id, s.due_at, s.state, s.run_url, s.conclusion, s.fired_at, s.first_attempt_at, s.attempts, s.response_status,
+              w.name AS workflow, r.full_name AS repo, ${REASON} AS reason
+         FROM slots s JOIN workflows w ON w.id = s.workflow_id JOIN repos r ON r.id = s.repo_id
+        WHERE s.installation_id = $1 AND s.due_at > $2::timestamptz - interval '24 hours' AND s.due_at <= $2) x
+      WHERE reason IS NOT NULL
+      ORDER BY array_position(ARRAY['overdue', 'missed', 'unconfirmed', 'failed', 'late'], reason), due_at DESC, id DESC
+      LIMIT $3`,
+    [installationId, now, limit],
+  );
+  return {
+    items: rows.map((r) => ({ ...slotView(r, now), workflow: r.workflow, repo: r.repo, reason: r.reason })),
+    more: Math.max(0, Number(rows[0]?.total ?? 0) - rows.length),
+  };
+}
+
 /** Per account: live schedules and the same verdict the overview shows, for the account switcher and list. */
 export async function accountHealth(db: pg.Pool, ids: number[], now: Date): Promise<Map<number, { schedules: number; health: Verdict }>> {
-  const [wf, c, gaps, created] = await Promise.all([
+  const [wf, c, due] = await Promise.all([
     db.query(
       `SELECT r.installation_id AS id, count(s.id) FILTER (WHERE s.status = 'active' AND w.flags = '[]')::int AS n, bool_or(w.flags <> '[]') AS needs_fix
          FROM workflows w JOIN repos r ON r.id = w.repo_id LEFT JOIN schedules s ON s.workflow_id = w.id
         WHERE r.installation_id = ANY($1) AND r.active AND w.present GROUP BY r.installation_id`, [ids],
     ),
     installCounts(db, ids, now),
-    coverageGaps(db, new Date(now.getTime() - DAY_MS), now),
-    db.query('SELECT id, created_at FROM installations WHERE id = ANY($1)', [ids]),
+    db.query(`SELECT i AS id FROM unnest($1::bigint[]) i
+               WHERE EXISTS (SELECT 1 FROM slots WHERE installation_id = i AND due_at <= $2 AND state <> 'skipped')`, [ids, now]),
   ]);
   const by = new Map(wf.rows.map((r) => [Number(r.id), r]));
-  const since = new Map(created.rows.map((r) => [Number(r.id), new Date(r.created_at).toISOString()]));
+  const ran = new Set(due.rows.map((r) => Number(r.id)));
   return new Map(ids.map((id) => {
     const schedules: number = by.get(id)?.n ?? 0;
-    const mine = gaps.filter((g) => g.end > (since.get(id) ?? '')).length; // ISO strings compare in time order
-    return [id, { schedules, health: verdictOf({ liveSchedules: schedules, needsFix: !!by.get(id)?.needs_fix, gaps: mine, c24: c.get(id) ?? counts(null) }) }];
+    return [id, { schedules, health: verdictOf({ liveSchedules: schedules, needsFix: !!by.get(id)?.needs_fix, c24: c.get(id) ?? counts(null), anyDue: ran.has(id) }) }];
   }));
 }
 
-export const MAX_ROWS = 500;
+export const MAX_ROWS = 50;
 export type HistoryFilter = 'late' | 'missed' | 'unconfirmed' | 'failed';
 const FILTERS: Record<HistoryFilter, string> = {
-  late: `state IN ('fired', 'accepted') AND fired_at - due_at > interval '30 seconds'`,
+  late: LATE,
   missed: `(state IN ('rejected', 'expired') OR (${OVERDUE}))`,
   unconfirmed: `state = 'unknown'`,
-  failed: `conclusion IS NOT NULL AND conclusion NOT IN ('success', 'neutral', 'skipped')`,
+  failed: FAILED,
 };
 
 /**
  * Slot history for one workflow, limited by plan and optionally filtered; null if it isn't in this installation.
- * `before` pages back (rows due strictly before it, still within the plan's window); `hasOlder` says there's more.
+ * Pages of MAX_ROWS, newest first. `before` pages back (rows due strictly before it), `after` pages forward (strictly
+ * after it); both stay within the plan's window. `hasOlder` / `hasNewer` say whether there is more either way.
  */
-export async function workflowHistory(db: pg.Pool, installationId: number, workflowId: number, now: Date, filter?: HistoryFilter, before?: Date) {
+export async function workflowHistory(db: pg.Pool, installationId: number, workflowId: number, now: Date, filter?: HistoryFilter, before?: Date, after?: Date) {
   const w = (await db.query(
     `SELECT w.id, w.name, w.path, w.present, w.flags, w.suggested_diff, r.full_name, r.default_branch, r.active AS repo_active, i.suspended, i.removed, i.alert_email, i.created_at,
             coalesce((SELECT json_agg(json_build_object('cron', s.cron, 'tz', s.tz, 'status', s.status) ORDER BY s.id) FROM schedules s WHERE s.workflow_id = w.id), '[]') AS schedules
@@ -311,26 +340,48 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
   const t = before?.getTime() ?? NaN;
   const cursor = t <= now.getTime() ? before! : null;
   const exhausted = cursor !== null && cursor <= oldest;
-  const [slots, all, day, gaps] = await Promise.all([
-    // due_at is unique per workflow, so a strict cursor neither skips nor repeats rows. One extra row tells if there's more.
+  // `after` only when there's no `before`; one in the future has nothing newer, one before the window starts from its oldest row.
+  const a = cursor ? NaN : after?.getTime() ?? NaN;
+  const forward = a < now.getTime() ? new Date(Math.max(a, oldest.getTime())) : null;
+  const [page, filterCounts, day, gaps] = await Promise.all([
+    // due_at is unique per workflow, so a strict cursor neither skips nor repeats rows.
     exhausted ? { rows: [] }
-      : db.query(`SELECT * FROM slots WHERE ${where}${cursor ? ' AND due_at < $3' : ''} ORDER BY due_at DESC LIMIT ${MAX_ROWS + 1}`, cursor ? [workflowId, now, cursor] : [workflowId, now]),
-    db.query(`SELECT state, count(*)::int AS n FROM slots WHERE ${window} GROUP BY state`, [workflowId, now]),
-    db.query(`SELECT ${COUNTS_SQL} FROM slots WHERE workflow_id = $1 AND due_at > $2::timestamptz - interval '24 hours' AND due_at <= $2`, [workflowId, now]),
+      : forward ? db.query(`SELECT * FROM slots WHERE ${where} AND due_at > $3 ORDER BY due_at ASC LIMIT ${MAX_ROWS}`, [workflowId, now, forward])
+      : db.query(`SELECT * FROM slots WHERE ${where}${cursor ? ' AND due_at < $3' : ''} ORDER BY due_at DESC LIMIT ${MAX_ROWS}`, cursor ? [workflowId, now, cursor] : [workflowId, now]),
+    // Counts per filter over the whole retained window, not just this page.
+    db.query(`SELECT count(*)::int AS all, ${(Object.keys(FILTERS) as HistoryFilter[]).map((k) => `count(*) FILTER (WHERE ${FILTERS[k]})::int AS ${k}`).join(', ')}
+                FROM slots WHERE ${window}`, [workflowId, now]),
+    db.query(`SELECT ${COUNTS_SQL}, percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM fired_at - due_at) * 1000)
+                       FILTER (WHERE state IN ('fired', 'accepted') AND fired_at IS NOT NULL) AS median
+                FROM slots WHERE workflow_id = $1 AND due_at > $2::timestamptz - interval '24 hours' AND due_at <= $2`, [workflowId, now]),
     coverageGaps(db, later(oldest, w.created_at), now),
   ]);
   const c24 = counts(day.rows[0]);
+  // Forward pages are read oldest first; keep the MAX_ROWS just after the cursor and show them newest first.
+  const rows = forward ? page.rows.slice(0, MAX_ROWS).reverse() : page.rows.slice(0, MAX_ROWS);
+  // What lies on each side of this page, from the rows themselves rather than the cursor, so an empty or stale page
+  // still knows its way back. `newerEdge` is the due time just above the page: the history table needs it to place a
+  // coverage gap that falls between two pages exactly once.
+  const [top, bottom] = [rows[0]?.due_at, rows[rows.length - 1]?.due_at];
+  const edges = (await db.query(
+    `SELECT (SELECT min(due_at) FROM slots WHERE ${where} AND due_at > $3) AS newer,
+            EXISTS (SELECT 1 FROM slots WHERE ${where} AND due_at < $4) AS older`,
+    [workflowId, now, top ?? now, bottom ?? oldest],
+  )).rows[0];
   return {
     workflow: w,
     status: workflowStatus(w),
-    hasOlder: slots.rows.length > MAX_ROWS,
-    slots: slots.rows.slice(0, MAX_ROWS).map((r) => ({
+    hasOlder: rows.length ? edges.older as boolean : false,
+    hasNewer: rows.length ? edges.newer !== null : false,
+    newerEdge: rows.length && edges.newer ? new Date(edges.newer).toISOString() : null,
+    slots: rows.map((r) => ({
       ...slotView(r, now), responseStatus: r.response_status as number | null, responseNote: r.response_note as string | null, matchedBy: r.matched_by as string | null,
       runStartedAt: r.run_started_at ? new Date(r.run_started_at).toISOString() : null, runCompletedAt: r.run_completed_at ? new Date(r.run_completed_at).toISOString() : null,
     })),
-    counts: Object.fromEntries(all.rows.map((r) => [r.state, r.n])) as Record<string, number>,
+    filterCounts: filterCounts.rows[0] as Record<HistoryFilter | 'all', number>,
+    medianDelayMs: day.rows[0].median == null ? null : Number(day.rows[0].median),
     c24,
-    health: workflowHealth(w.flags.length > 0, gapsDue(gaps, w.schedules, now), c24),
+    health: workflowHealth(w.flags.length > 0, c24),
     next: nextFor(w.schedules, w.present && w.repo_active && !w.flags.length && !w.suspended && !w.removed, now),
     limits,
     plan,

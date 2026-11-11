@@ -1,8 +1,9 @@
-import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon, MinusCircleIcon, NoSymbolIcon, QuestionMarkCircleIcon, XCircleIcon } from '@heroicons/react/16/solid';
+import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon, InformationCircleIcon, MinusCircleIcon, NoSymbolIcon, QuestionMarkCircleIcon, XCircleIcon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import type { ComponentProps, ReactNode } from 'react';
 import type { SlotDisplay, Verdict } from '@/lib/data';
-import { Time } from './live';
+import { fmtSpan } from '@/lib/live';
+import { TimeRange } from './live';
 
 const base = 'inline-flex items-center justify-center gap-x-1.5 rounded-lg text-base/6 font-medium whitespace-nowrap sm:text-sm/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500';
 const sizes = { lg: 'px-4.5 py-3 sm:py-2.5', md: 'px-3.5 py-2.5 sm:py-2', sm: 'px-2.5 py-1.5 sm:py-1' };
@@ -25,6 +26,7 @@ export function Button({ variant, size, className, ...props }: Style & Component
 export const tones = {
   green: 'bg-emerald-400/10 text-emerald-300 inset-ring-emerald-400/20',
   amber: 'bg-brand-500/10 text-brand-300 inset-ring-brand-500/20',
+  orange: 'bg-orange-400/10 text-orange-300 inset-ring-orange-400/20',
   red: 'bg-red-500/10 text-red-300 inset-ring-red-500/20',
   blue: 'bg-sky-400/10 text-sky-300 inset-ring-sky-400/20',
   zinc: 'bg-white/5 text-zinc-400 inset-ring-white/10',
@@ -37,7 +39,7 @@ export function Badge({ tone = 'zinc', children }: { tone?: Tone; children: Reac
 // Honest slot words: what Cronkick knows, never more. The job's own result is shown separately (JobResult).
 // Keyed by display state (SlotView.display): the stored state, or `waiting` / `overdue` for a due slot not sent yet.
 export const SLOT_TONE: Record<SlotDisplay, Tone> = {
-  accepted: 'green', fired: 'blue', unknown: 'amber', rejected: 'red', expired: 'red', skipped: 'zinc', pending: 'zinc', dispatching: 'blue',
+  accepted: 'green', fired: 'blue', unknown: 'zinc', rejected: 'red', expired: 'red', skipped: 'zinc', pending: 'zinc', dispatching: 'blue',
   waiting: 'blue', overdue: 'red',
 };
 export const SLOT_LABEL: Record<SlotDisplay, string> = {
@@ -62,12 +64,12 @@ export const slotHelp = (display: SlotDisplay, retrying = false) =>
 
 // Account verdict words for the account list and switcher; the word always goes with the dot.
 export const VERDICT_DOT: Record<Verdict, string> = {
-  on_time: 'bg-emerald-400', late: 'bg-orange-300', in_progress: 'bg-sky-400', unconfirmed: 'bg-brand-400', missed: 'bg-red-500', behind: 'bg-red-500',
-  coverage_gap: 'bg-red-500', needs_fix: 'bg-red-500', no_runs: 'bg-zinc-600', nothing_scheduled: 'bg-zinc-600',
+  on_time: 'bg-emerald-400', late: 'bg-orange-300', in_progress: 'bg-sky-400', unconfirmed: 'bg-zinc-400', missed: 'bg-red-500', behind: 'bg-red-500',
+  needs_fix: 'bg-red-500', no_runs: 'bg-zinc-500', quiet: 'bg-zinc-500', nothing_scheduled: 'bg-zinc-600',
 };
 export const VERDICT_WORD: Record<Verdict, string> = {
-  on_time: 'all on time', late: 'late runs', in_progress: 'sending now', unconfirmed: 'unconfirmed runs', missed: 'missed runs', behind: 'runs overdue',
-  coverage_gap: 'Cronkick outage', needs_fix: 'needs a fix', no_runs: 'no runs yet', nothing_scheduled: 'nothing scheduled',
+  on_time: 'no issues', late: 'late runs', in_progress: 'sending', unconfirmed: 'unconfirmed', missed: 'not sent', behind: 'overdue',
+  needs_fix: 'needs a fix', no_runs: 'waiting for first run', quiet: 'nothing due today', nothing_scheduled: 'nothing scheduled',
 };
 
 export function Code({ children }: { children: ReactNode }) {
@@ -84,15 +86,25 @@ export const SLOT_ICON: Record<SlotDisplay, typeof ClockIcon> = {
   pending: ClockIcon, dispatching: ClockIcon, waiting: ClockIcon, overdue: ExclamationTriangleIcon,
 };
 
-/** Slot status pill (by display state) with an icon, so state reads without relying on colour alone. */
-export function SlotPill({ state, retrying }: { state: SlotDisplay; retrying?: boolean }) {
-  const Icon = SLOT_ICON[state] ?? ClockIcon;
-  const tone = tones[SLOT_TONE[state] ?? 'zinc'];
+/** A status pill: icon plus word, so it reads without relying on colour alone. For exceptions; routine states use a dot. */
+export function Pill({ tone, icon: Icon, title, children }: { tone: Tone; icon: typeof ClockIcon; title?: string; children: ReactNode }) {
   return (
-    <span title={slotHelp(state, retrying)} className={`inline-flex items-center gap-x-1 rounded-md py-0.5 pr-1.5 pl-0.5 text-sm/5 font-medium whitespace-nowrap inset-ring sm:text-xs/5 ${tone}`}>
-      <Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />{SLOT_LABEL[state] ?? state}
+    <span title={title} className={`inline-flex items-center gap-x-1 rounded-md py-0.5 pr-1.5 pl-0.5 text-xs/5 font-medium whitespace-nowrap inset-ring ${tones[tone]}`}>
+      <Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />{children}
     </span>
   );
+}
+
+/** Slot status pill by display state. */
+export function SlotPill({ state, retrying }: { state: SlotDisplay; retrying?: boolean }) {
+  return <Pill tone={SLOT_TONE[state] ?? 'zinc'} icon={SLOT_ICON[state] ?? ClockIcon} title={slotHelp(state, retrying)}>{SLOT_LABEL[state] ?? state}</Pill>;
+}
+export const LatePill = () => <Pill tone="orange" icon={ClockIcon} title="Sent more than 30 s after its scheduled time.">Late</Pill>;
+export const JobFailedPill = () => <Pill tone="red" icon={XCircleIcon} title="GitHub ran the job and it failed.">Job failed</Pill>;
+
+/** A dot and a word, for routine states. */
+export function StatusDot({ dot, children, className = '' }: { dot: string; children: ReactNode; className?: string }) {
+  return <span className={`inline-flex items-center gap-x-2 ${className}`}><span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${dot}`} />{children}</span>;
 }
 
 /** Where to set the address that limit and miss emails go to (R20). */
@@ -100,16 +112,32 @@ export function AlertHint({ id }: { id: number }) {
   return <>Add an alert email in <Link href={`/dashboard/${id}/settings`} className="font-medium text-white underline decoration-white/20 hover:decoration-white">Settings</Link> to hear about limits and misses.</>;
 }
 
+/** A neutral notice: history and context, not a problem to act on now. */
+export function Notice({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`flex gap-x-3 rounded-xl bg-white/[0.03] px-4 py-3 text-sm/6 text-zinc-300 inset-ring inset-ring-white/10 ${className}`}>
+      <InformationCircleIcon aria-hidden="true" className="mt-1 size-4 shrink-0 fill-zinc-400" />
+      <div className="min-w-0 space-y-1">{children}</div>
+    </div>
+  );
+}
+
 /**
- * Cronkick's own planner outages that overlap what the page shows; nothing when there are none. The window starts at the
- * last planning pass, and the dispatcher may have kept sending runs planned before it, so it can't say none were sent.
+ * Cronkick's own planner outages that overlap what the page shows; nothing when there are none. Neutral, not red:
+ * it's past, and nobody knows what it cost. The window starts at the last planning pass, and the dispatcher may have
+ * kept sending runs planned before it, so it can't say none were sent.
  */
-export function GapBanner({ gaps, className = '' }: { gaps: { start: string; end: string }[]; className?: string }) {
+export function GapNotice({ gaps, className = '' }: { gaps: { start: string; end: string }[]; className?: string }) {
   if (!gaps.length) return null;
   return (
-    <div role="status" className={`space-y-1 rounded-xl bg-red-500/10 px-4 py-3 text-sm/6 text-red-200 inset-ring inset-ring-red-500/20 ${className}`}>
-      {gaps.map((g) => <p key={g.start}>Cronkick’s scheduler was down from <Time iso={g.start} /> to <Time iso={g.end} /> (your time). Runs due then may not have been sent; any that were sent are listed in the history.</p>)}
-    </div>
+    <Notice className={className}>
+      {gaps.map((g) => (
+        <p key={g.start}>
+          <span className="font-medium text-white">Coverage gap</span> · <TimeRange start={g.start} end={g.end} /> ({fmtSpan(Date.parse(g.end) - Date.parse(g.start))}).
+          {' '}Runs due then may not have been sent; runs that were sent are in the history.
+        </p>
+      ))}
+    </Notice>
   );
 }
 
@@ -124,8 +152,43 @@ const NO_RUN = new Set<SlotDisplay>(['overdue', 'rejected', 'expired', 'skipped'
 /** The GitHub job's own result, only when GitHub reported one; "—" for a row that was never sent. */
 export function JobResult({ conclusion, display }: { conclusion: string | null; display?: SlotDisplay }) {
   if (!conclusion && display && NO_RUN.has(display)) return <span title="No run" className="text-zinc-600"><span aria-hidden="true">—</span><span className="sr-only">No run</span></span>;
-  if (!conclusion) return <span className="text-zinc-500">Not reported yet</span>;
+  if (!conclusion) return <span className="text-zinc-400">Not reported yet</span>;
   if (conclusion === 'success') return <span className="text-emerald-300">✓ Passed</span>;
   if (conclusion === 'neutral' || conclusion === 'skipped') return <span className="text-zinc-400">{conclusion}</span>;
   return <span className="text-red-300">✕ {conclusion === 'failure' ? 'Failed' : conclusion.replace('_', ' ')}</span>;
+}
+
+const KEY: [string, string, string][] = [
+  ['bg-ontime', 'On time', 'Sent to GitHub within 30 s of its scheduled time.'],
+  ['bg-late', 'Late', 'Sent, but more than 30 s after its scheduled time.'],
+  ['tick-waiting', 'Sending', 'Due in the last minute; Cronkick is sending it.'],
+  ['tick-overdue', 'Overdue', 'Over a minute past its scheduled time and not sent yet.'],
+  ['tick-unconfirmed', 'Unconfirmed', 'Sent, but GitHub didn’t confirm it. Cronkick doesn’t resend, to avoid a double run.'],
+  ['bg-missed', 'Refused or gave up', 'GitHub refused the trigger, or it wasn’t sent before its deadline.'],
+  ['tick-skip', 'Skipped', 'Not sent because the schedule was paused or changed.'],
+  ['tick-gap', 'Coverage gap', 'Cronkick wasn’t planning runs; runs due then may not have been sent.'],
+];
+
+/** What the strip colours mean. A native popover: Escape and a click outside close it, and it never covers the page layout. */
+export function StatusKey() {
+  return (
+    <>
+      <button type="button" popoverTarget="status-key" className="-my-3 inline-flex min-h-11 items-center rounded-md px-1.5 font-medium text-zinc-300 underline decoration-white/30 underline-offset-2 hover:text-white hover:decoration-white">Status key</button>
+      <div id="status-key" popover="auto" className="m-auto w-[min(26rem,calc(100vw-2rem))] rounded-xl bg-zinc-900 p-5 text-sm/6 text-zinc-300 shadow-2xl ring-1 ring-white/10 backdrop:bg-black/50">
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-white">Status key</p>
+          <button type="button" popoverTarget="status-key" popoverTargetAction="hide" className="-mr-2 inline-flex min-h-11 items-center rounded-md px-3 text-zinc-300 hover:text-white">Close</button>
+        </div>
+        <dl className="mt-3 space-y-2.5">
+          {KEY.map(([cls, word, help]) => (
+            <div key={word} className="grid grid-cols-[1rem_minmax(0,1fr)] gap-x-3">
+              <dt className="flex h-6 items-center"><span aria-hidden="true" className={`flex h-4 w-2.5 rounded-xs ${cls}`} /><span className="sr-only">{word}</span></dt>
+              <dd><span className="font-medium text-white">{word}.</span> {help}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 text-[13px]/5 text-zinc-400">The job’s own result (passed or failed) comes from GitHub and is shown separately in the history.</p>
+      </div>
+    </>
+  );
 }

@@ -10,7 +10,8 @@ import { SiteMenu } from './site-menu';
 export const container = 'mx-auto max-w-6xl px-4 sm:px-6 lg:px-8';
 
 export function Logo({ className = 'h-6' }: { className?: string }) {
-  return <Link href="/" aria-label="Homepage" className="flex shrink-0 items-center"><Lockup className={className} /></Link>;
+  // Padding, not size, makes it a 44 px tap target; the negative margin keeps the layout where it was.
+  return <Link href="/" aria-label="Homepage" className="-my-3 flex min-h-11 shrink-0 items-center"><Lockup className={className} /></Link>;
 }
 
 /** Reads the session itself, so every public page shows Dashboard to a signed-in visitor. */

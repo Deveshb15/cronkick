@@ -1,9 +1,9 @@
-import { Bars3Icon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AccountSwitcher, type Account } from '@/components/account-switcher';
 import { DashNav } from '@/components/dash-nav';
 import { LiveRefresh } from '@/components/live-refresh';
+import { PhoneMenu } from '@/components/phone-menu';
 import { Logo } from '@/components/site';
 import { requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
@@ -35,19 +35,13 @@ export default async function Shell({ children, params }: { children: ReactNode;
           <div className="min-h-0 flex-1">{nav}</div>
         </div>
       </aside>
-      <details className="group border-b border-white/5 lg:hidden">
-        <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
-          <Logo className="h-5" />
-          <span className="flex items-center gap-x-2 text-sm/6 font-medium text-zinc-400">
-            {inst.account_login}
-            <Bars3Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />
-            <span className="sr-only">Open menu</span>
-          </span>
-        </summary>
-        <div className="px-4 pb-4">{nav}</div>
-      </details>
+      {/* Phone: the logo link and the menu are two separate targets. */}
+      <div className="relative flex items-center justify-between border-b border-white/5 px-4 py-2 lg:hidden">
+        <Logo className="h-5" />
+        <PhoneMenu label={inst.account_login}>{nav}</PhoneMenu>
+      </div>
       <main className="relative min-w-0 flex-1">
-        <div className="absolute top-5 right-4 z-10 sm:right-6 lg:right-10"><LiveRefresh installationId={id} /></div>
+        <div className="absolute top-5 right-4 z-10 max-sm:hidden sm:right-6 lg:right-10"><LiveRefresh installationId={id} /></div>
         {children}
       </main>
     </div>
