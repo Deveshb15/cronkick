@@ -140,6 +140,15 @@ describe('collector health and report', () => {
     expect(p.github.stats.expected).toBe(0);
   });
 
+  test('pairs: while waiting, the runs so far are returned to show, but none are counted', async () => {
+    // Measuring from 19:00 (twin added 18:50); last check 19:55, so 19:00 isn't countable until the 20:00 check.
+    await db.query('INSERT INTO probe_workflows (repo, path, state, checked_at, created_at) VALUES ($1, $2, $3, $4, $5)', ['acme/p', CK, 'active', at('19:55:00'), at('18:50:00')]);
+    const p = await pairDb('19:55:00', hourly(CK, 19, 19, 1), { [GH]: 'active' }, null, '01:00:00');
+    expect(p).toMatchObject({ state: 'collecting', startAt: at('19:00:00'), until: at('18:55:00') });
+    expect(p.github.stats.expected).toBe(0);
+    expect(p.ticks).toEqual([{ due: at('19:00:00'), github: null, cronkick: 1 }]);
+  });
+
   test('pairs: a Cronkick twin added to a repo with older GitHub probes starts after 10 minutes, not an hour', async () => {
     await db.query('INSERT INTO probe_workflows (repo, path, state, checked_at, created_at) VALUES ($1, $2, $3, $4, $5)', ['acme/p', CK, 'active', at('21:00:00'), at('12:52:00')]);
     const p = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600), ...hourly(CK, 13, 20, 1)], { [GH]: 'active' }, null, '01:00:00');

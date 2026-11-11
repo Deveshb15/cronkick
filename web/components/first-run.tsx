@@ -29,7 +29,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
             {repos.length ? done : step(1, true)}
             <div className="min-w-0 flex-1">
               <p className="font-medium">{repos.length ? `Cronkick can see ${repos.length} ${repos.length === 1 ? 'repository' : 'repositories'}` : 'Choose which repositories Cronkick can see'}</p>
-              <p className="text-sm/6 text-zinc-400">{repos.length ? `${repos.map((r) => r.split('/')[1]).slice(0, 3).join(', ')}${repos.length > 3 ? ` +${repos.length - 3} more` : ''} · ` : ''}<a href={manageUrl} className="text-zinc-300 underline decoration-white/20 hover:decoration-white">{repos.length ? 'Add more on GitHub ↗' : 'Pick repositories on GitHub ↗'}</a></p>
+              <p className="text-sm/6 text-zinc-400">{repos.length ? `${repos.map((r) => r.split('/')[1]).slice(0, 3).join(', ')}${repos.length > 3 ? ` +${repos.length - 3} more` : ''} · ` : ''}<a target="_blank" rel="noreferrer" href={manageUrl} className="text-zinc-300 underline decoration-white/20 hover:decoration-white">{repos.length ? 'Add more on GitHub ↗' : 'Pick repositories on GitHub ↗'}</a></p>
             </div>
           </li>
           <li className="flex gap-4">
@@ -92,7 +92,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
           <>
             <h1 className="mt-1 text-2xl/8 font-semibold tracking-tight">Choose repositories for Cronkick</h1>
             <p className="mt-2 text-sm/6 text-zinc-400">Cronkick can’t see any repositories yet. Pick the ones with workflows to schedule, then add one line.</p>
-            <ButtonLink href={manageUrl} variant="primary" size="lg" className="mt-6">Choose repositories on GitHub ↗</ButtonLink>
+            <ButtonLink target="_blank" rel="noreferrer" href={manageUrl} variant="primary" size="lg" className="mt-6">Choose repositories on GitHub ↗</ButtonLink>
             {steps}
           </>
         )}

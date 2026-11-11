@@ -44,7 +44,7 @@ export default async function Lateness() {
             {publicRepos.length > 0 && (
               <div className="mt-8 flex flex-wrap justify-center gap-3">
                 {publicRepos.map((r) => (
-                  <a key={r.repo} href={`https://github.com/${r.repo}/actions`}
+                  <a target="_blank" rel="noreferrer" key={r.repo} href={`https://github.com/${r.repo}/actions`}
                     className="group inline-flex min-h-11 max-w-full items-center gap-x-2.5 rounded-full bg-white/5 py-2 pr-4 pl-3 text-sm/6 font-medium text-white inset-ring inset-ring-white/10 hover:bg-white/10">
                     <GitHubMark className="size-5 shrink-0" />
                     <span className="min-w-0 truncate font-mono">{r.repo}</span>
@@ -76,7 +76,7 @@ export default async function Lateness() {
                 {report.repos.map((r) => (
                   <li key={r.repo} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
                     {r.private === false
-                      ? <a href={`https://github.com/${r.repo}`} className="font-mono text-white underline decoration-white/30 underline-offset-2 hover:decoration-white">{r.repo}</a>
+                      ? <a target="_blank" rel="noreferrer" href={`https://github.com/${r.repo}`} className="font-mono text-white underline decoration-white/30 underline-offset-2 hover:decoration-white">{r.repo}</a>
                       : <span className="text-zinc-300">{r.private ? 'A private repository' : 'A probe repository'}</span>}
                     {r.private !== null && <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-xs/5 text-zinc-300 inset-ring inset-ring-white/10">{r.private ? 'Private' : 'Public'}</span>}
                     <span className="text-zinc-400">

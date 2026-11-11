@@ -78,7 +78,7 @@ export default async function Settings({ params }: { params: Promise<{ installat
             <h2 className="text-base/7 font-semibold">Repository access</h2>
             <p className="text-sm/6 text-zinc-400">Choose which repositories Cronkick can see, on GitHub. Uninstalling there stops every schedule at once.</p>
           </div>
-          <ButtonLink href={manageReposUrl(inst)}>Manage on GitHub ↗</ButtonLink>
+          <ButtonLink target="_blank" rel="noreferrer" href={manageReposUrl(inst)}>Manage on GitHub ↗</ButtonLink>
         </div>
       </section>
     </div>

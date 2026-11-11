@@ -154,7 +154,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
           </div>
           {!repos.length && (
             <p className="mt-3 rounded-xl px-4 py-4 text-sm/6 text-zinc-300 inset-ring inset-ring-white/10">
-              Cronkick can’t see any repositories, so nothing will be sent. <a href={manageReposUrl(inst)} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Choose repositories on GitHub ↗</a>
+              Cronkick can’t see any repositories, so nothing will be sent. <a target="_blank" rel="noreferrer" href={manageReposUrl(inst)} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Choose repositories on GitHub ↗</a>
             </p>
           )}
           {carded.length > 0 && (

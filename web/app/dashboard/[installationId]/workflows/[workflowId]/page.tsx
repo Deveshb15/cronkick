@@ -107,8 +107,8 @@ export default async function WorkflowPage({ params, searchParams }: {
             <p className="mt-0.5 font-mono text-xs/5 break-all text-zinc-400">{schedules.map((s) => s.cron).join(' · ')}{schedules.length ? ' · ' : ''}{w.path}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a href={`https://github.com/${w.full_name}/blob/${w.default_branch}/${w.path}`} className={button}><GitHubMark className="size-4" />Workflow file ↗</a>
-            <a href={`https://github.com/${w.full_name}/actions/workflows/${w.path.split('/').pop()}`} className={button}>Runs on GitHub ↗</a>
+            <a target="_blank" rel="noreferrer" href={`https://github.com/${w.full_name}/blob/${w.default_branch}/${w.path}`} className={button}><GitHubMark className="size-4" />Workflow file ↗</a>
+            <a target="_blank" rel="noreferrer" href={`https://github.com/${w.full_name}/actions/workflows/${w.path.split('/').pop()}`} className={button}>Runs on GitHub ↗</a>
           </div>
         </div>
 
@@ -140,7 +140,7 @@ export default async function WorkflowPage({ params, searchParams }: {
             </div>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
-            <a href={`https://github.com/${w.full_name}/edit/${w.default_branch}/${w.path}`} className="inline-flex min-h-11 items-center rounded-lg bg-brand-500 px-3.5 text-sm/6 font-medium text-ink hover:bg-brand-400 sm:min-h-9">Edit the file on GitHub ↗</a>
+            <a target="_blank" rel="noreferrer" href={`https://github.com/${w.full_name}/edit/${w.default_branch}/${w.path}`} className="inline-flex min-h-11 items-center rounded-lg bg-brand-500 px-3.5 text-sm/6 font-medium text-ink hover:bg-brand-400 sm:min-h-9">Edit the file on GitHub ↗</a>
             <Link href="/docs/checks" className={button}>What Cronkick checks</Link>
           </div>
         </section>

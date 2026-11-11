@@ -11,7 +11,7 @@ export default function About() {
       <main className="px-4 pt-12 pb-24 sm:px-6 lg:px-8"><div className="mx-auto max-w-6xl"><Prose>
         <h1>About Cronkick</h1>
         <h2>Who runs it</h2>
-        <p>Cronkick is operated by Devesh Bhimanpelli (<a href="https://github.com/Deveshb15">github.com/Deveshb15</a>), an individual based in India. The <a href="/terms">terms</a> are governed by the laws of India.</p>
+        <p>Cronkick is operated by Devesh Bhimanpelli (<a target="_blank" rel="noreferrer" href="https://github.com/Deveshb15">github.com/Deveshb15</a>), an individual based in India. The <a href="/terms">terms</a> are governed by the laws of India.</p>
         <h2>How to reach us</h2>
         <p>Email <a href="mailto:hi@cronkick.xyz">hi@cronkick.xyz</a> for support, billing, data requests and security reports. See <a href="/support">support</a>.</p>
         <h2>Where it runs</h2>

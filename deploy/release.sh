@@ -63,6 +63,9 @@ point() {
 }
 # Healthy = the worker and database answer, and the site serves this exact build.
 healthy() { for _ in $(seq 1 60); do curl -fs localhost:3000/healthz >/dev/null && curl -fs localhost:3000/ | grep -q "dpl=$1" && return 0; sleep 1; done; return 1; }
+# The other server still runs the previous build for a minute, and pages it served ask for that build's scripts.
+# They are content-hashed, so give this release a copy of them before it starts (Next lists them at start).
+if [ -d "$prev/web/.next/static" ]; then cp -rn "$prev/web/.next/static/." "$R/web/.next/static/" 2>/dev/null || true; chown -R cronkick:cronkick "$R/web/.next/static"; fi
 # Inside `if`, so a unit that fails to start still reaches the switch back below.
 if point "$R" && healthy "$ID"; then
   echo "$(hostname) is live on $ID"

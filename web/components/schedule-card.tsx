@@ -87,7 +87,7 @@ export function ScheduleCard({ w, installationId, slots, days, zone, gaps, now, 
           <span className="text-zinc-400">Latest run</span>
           <Time iso={last.due} className="text-zinc-200 tabular-nums" />
           <span className={TONE[last.tone]}>{last.text}</span>
-          {last.runUrl && <a href={last.runUrl} className="inline-flex min-h-11 items-center text-zinc-300 hover:text-white hover:underline sm:min-h-0">View run ↗</a>}
+          {last.runUrl && <a target="_blank" rel="noreferrer" href={last.runUrl} className="inline-flex min-h-11 items-center text-zinc-300 hover:text-white hover:underline sm:min-h-0">View run ↗</a>}
         </p>
       )}
     </article>

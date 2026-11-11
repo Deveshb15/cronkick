@@ -30,7 +30,7 @@ function Steps({ s }: { s: HistoryRow }) {
     <>Due <Time iso={s.due} zone /></>,
     s.sendDelayMs !== null ? `Sent to GitHub ${fmtDelay(s.sendDelayMs)}${tries}` : s.triedDelayMs !== null && s.attempts > 0 ? `First tried ${fmtDelay(s.triedDelayMs)}${tries}` : 'Not sent',
     s.responseStatus ? `GitHub answered ${s.responseStatus}${s.responseNote ? ` (${s.responseNote})` : ''}` : s.responseNote ?? (sent ? 'GitHub accepted it' : slotHelp(s.display, s.retrying)),
-    s.runUrl ? <a href={s.runUrl} className="text-white underline decoration-white/30 hover:decoration-white">Run linked {s.matchedBy === 'time' ? 'by time (a manual run near then could match) ⚠' : 'by id'} ↗</a> : sent ? 'Run not linked yet' : null,
+    s.runUrl ? <a target="_blank" rel="noreferrer" href={s.runUrl} className="text-white underline decoration-white/30 hover:decoration-white">Run linked {s.matchedBy === 'time' ? 'by time (a manual run near then could match) ⚠' : 'by id'} ↗</a> : sent ? 'Run not linked yet' : null,
     // Time GitHub took to start the run after accepting it: GitHub's queue, not Cronkick.
     s.runStartedAt && s.sendDelayMs !== null ? `GitHub started the run ${fmtDuration(new Date(s.runStartedAt).getTime() - new Date(s.due).getTime() - s.sendDelayMs)} later` : null,
     s.runUrl ? <>Run <JobResult conclusion={s.conclusion} />{took(s) ? ` in ${took(s)}` : ''}</> : null,
@@ -128,7 +128,7 @@ export function HistoryTable({ rows, gaps = [], newerEdge = null }: { rows: Hist
                 </td>
                 <td className={`text-[13px]/5 max-sm:order-4 max-sm:justify-self-end ${cell}`}><span className="text-zinc-400 sm:hidden">Run </span><JobResult conclusion={s.conclusion} display={s.display} /></td>
                 <td className={`font-mono text-[13px]/5 text-zinc-300 tabular-nums max-sm:hidden ${cell}`}>{took(s) ?? <span className="text-zinc-500">—</span>}</td>
-                <td className={`pr-1 text-right max-sm:hidden ${cell}`}>{s.runUrl ? <a href={s.runUrl} className="text-[13px]/5 text-zinc-300 hover:text-white hover:underline">View run<span className="sr-only"> for {s.due}</span> ↗</a> : <span className="text-zinc-500">—</span>}</td>
+                <td className={`pr-1 text-right max-sm:hidden ${cell}`}>{s.runUrl ? <a target="_blank" rel="noreferrer" href={s.runUrl} className="text-[13px]/5 text-zinc-300 hover:text-white hover:underline">View run<span className="sr-only"> for {s.due}</span> ↗</a> : <span className="text-zinc-500">—</span>}</td>
               </tr>
               <tr id={`steps-${s.id}`} hidden={open !== s.id} className="bg-white/[0.02] max-sm:[&:not([hidden])]:block">
                 <td colSpan={6} className="px-4 py-3 max-sm:block sm:px-8"><Steps s={s} /></td>
