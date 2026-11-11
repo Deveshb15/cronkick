@@ -7,15 +7,15 @@ Wants=network-online.target
 
 [Service]
 User=cronkick
-WorkingDirectory=/opt/cronkick
+WorkingDirectory=/opt/cronkick/current
 EnvironmentFile=/etc/cronkick/env
 Environment=NODE_ENV=production
-ExecStart=/opt/cronkick/node_modules/.bin/next start web -p 3000
+ExecStart=/opt/cronkick/current/node_modules/.bin/next start web -p 3000
 Restart=always
 RestartSec=2
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/opt/cronkick/web/.next
+ReadWritePaths=/opt/cronkick/current/web/.next
 ProtectHome=true
 PrivateTmp=true
 

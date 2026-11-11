@@ -1,30 +1,14 @@
 #!/usr/bin/env bash
-# Rolling deploy: update one droplet at a time and wait until it's healthy, so a server is always firing.
+# Deploy from a laptop with the same steps CI runs (merging to main is the normal way):
+# build here, upload to every server, migrate once, then go live one server at a time.
 # Usage: deploy/push.sh <ip> [<ip> ...]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ $# -gt 0 ] || { echo "usage: deploy/push.sh <droplet ip> [...]"; exit 1; }
-# Every server gets the same deployment id, so a browser moving between them never sees a version mismatch.
-DPL="$(git rev-parse --short HEAD)-$(date +%s)"
-for host in "$@"; do
-  echo "==> $host"
-  # Only files tracked in git: local secrets (.env.production, *.pem) never leave this machine.
-  git ls-files | grep -v -E '^(test|docs|probe)/' | rsync -az --files-from=- ./ "root@$host:/opt/cronkick/"
-  ssh "root@$host" "echo $DPL > /opt/cronkick/web/.deployment-id"
-  ssh "root@$host" 'set -e
-    cd /opt/cronkick && chown -R cronkick:cronkick .
-    sudo -u cronkick npm ci --silent
-    # Same Server Actions key on every server (set once in /etc/cronkick/env), so a form rendered by one server works on the other.
-    KEY=$(grep "^NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=" /etc/cronkick/env | cut -d= -f2- || true)
-    [ -n "$KEY" ] || { echo "add NEXT_SERVER_ACTIONS_ENCRYPTION_KEY to /etc/cronkick/env (openssl rand -base64 32), same on every server"; exit 1; }
-    sudo -u cronkick env NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$KEY" node_modules/.bin/next build web >/tmp/next-build.log 2>&1 || { tail -30 /tmp/next-build.log; exit 1; }
-    cp deploy/cronkick.service deploy/cronkick-web.service /etc/systemd/system/ && systemctl daemon-reload
-    test -f /etc/cronkick/env || { echo "missing /etc/cronkick/env"; exit 1; }
-    systemctl enable cronkick cronkick-web >/dev/null 2>&1
-    systemctl restart cronkick cronkick-web
-    for i in $(seq 1 40); do
-      if curl -fs localhost:3000/healthz >/dev/null && curl -fs -o /dev/null localhost:3000/; then echo healthy; exit 0; fi
-      sleep 1
-    done
-    journalctl -u cronkick -u cronkick-web -n 50 --no-pager; exit 1'
-done
+id="$(git rev-parse --short HEAD)-$(date +%s)"
+# The build must use the servers' Server Actions key, so a form rendered by one server works on the other.
+export NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-$(ssh "root@$1" "grep '^NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=' /etc/cronkick/env | cut -d= -f2-")}"
+deploy/release.sh build "$id"
+for h in "$@"; do deploy/release.sh upload "$h" "$id"; done
+deploy/release.sh migrate "$1" "$id"
+for h in "$@"; do deploy/release.sh live "$h" "$id"; done
