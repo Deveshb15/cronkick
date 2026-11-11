@@ -40,7 +40,8 @@ export async function record(deps: Deps, slot: Claimed, result: DispatchResult |
   const db = deps.db;
   // Every update is guarded by state = 'dispatching', so a slot settle() already marked unknown is never overwritten.
   if (result instanceof DispatchTimeout) {
-    await db.query(`UPDATE slots SET state = 'unknown', response_note = $2, lease_until = NULL, updated_at = $3 WHERE id = $1 AND state = 'dispatching'`, [slot.id, result.message, now]);
+    // Clear the status: a 429 from an earlier try must not sit next to "Unconfirmed".
+    await db.query(`UPDATE slots SET state = 'unknown', response_status = NULL, response_note = $2, lease_until = NULL, updated_at = $3 WHERE id = $1 AND state = 'dispatching'`, [slot.id, result.message, now]);
     return;
   }
   if (result.status >= 200 && result.status < 300) {
@@ -63,7 +64,7 @@ export async function record(deps: Deps, slot: Claimed, result: DispatchResult |
   }
   // 4xx (bad ref, workflow lacks workflow_dispatch, no permission): GitHub refused; don't retry.
   await db.query(
-    `UPDATE slots SET state = 'unknown', response_status = $2, response_note = $3, lease_until = NULL, updated_at = $4 WHERE id = $1 AND state = 'dispatching'`,
+    `UPDATE slots SET state = 'rejected', response_status = $2, response_note = $3, lease_until = NULL, updated_at = $4 WHERE id = $1 AND state = 'dispatching'`,
     [slot.id, result.status, result.note ?? null, now],
   );
 }
@@ -76,7 +77,12 @@ async function fire(deps: Deps, s: Claimed): Promise<void> {
   // Queued too long behind slow calls: hand the slot back rather than call on an expiring lease,
   // which settle() would mark unknown while we're still calling.
   if (s.lease_until.getTime() - deps.now().getTime() < MIN_LEASE_LEFT_MS) {
-    await deps.db.query(`UPDATE slots SET state = 'pending', attempts = attempts - 1, lease_until = NULL WHERE id = $1 AND state = 'dispatching'`, [s.id]);
+    // Undoing the only attempt also undoes "first tried", so a later expiry doesn't show a try that never happened.
+    await deps.db.query(
+      `UPDATE slots SET state = 'pending', attempts = attempts - 1, first_attempt_at = CASE WHEN attempts = 1 THEN NULL ELSE first_attempt_at END, lease_until = NULL
+        WHERE id = $1 AND state = 'dispatching'`,
+      [s.id],
+    );
     return;
   }
   let result: DispatchResult | DispatchTimeout;

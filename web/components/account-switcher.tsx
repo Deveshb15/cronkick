@@ -2,12 +2,10 @@
 import { ChevronUpDownIcon, PlusIcon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import type { Health } from '@/lib/data';
+import type { Verdict } from '@/lib/data';
+import { VERDICT_DOT, VERDICT_WORD } from './ui';
 
-export type Account = { id: number; login: string; plan: string; schedules: number; health: Health };
-
-const DOT: Record<Health, string> = { on_time: 'bg-emerald-400', late: 'bg-orange-300', missed: 'bg-red-500', no_runs: 'bg-zinc-600' };
-const WORD: Record<Health, string> = { on_time: 'all on time', late: 'late runs', missed: 'missed runs', no_runs: 'no runs yet' };
+export type Account = { id: number; login: string; plan: string; schedules: number; health: Verdict };
 const avatar = (login: string) => `https://github.com/${login}.png?size=48`;
 
 /** The GitHub account this dashboard is scoped to, with every other account one click away. Remembers the choice. */
@@ -43,7 +41,7 @@ export function AccountSwitcher({ current, accounts, installUrl }: { current: Ac
               <img src={avatar(a.login)} alt="" className="size-6 shrink-0 rounded-md outline-1 -outline-offset-1 outline-white/10" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{a.login}</span>
-                <span className="flex items-center gap-x-1.5 text-xs/4 text-zinc-400"><span className={`size-1.5 rounded-full ${DOT[a.health]}`} />{a.schedules} schedule{a.schedules === 1 ? '' : 's'} · {WORD[a.health]}</span>
+                <span className="flex items-center gap-x-1.5 text-xs/4 text-zinc-400"><span className={`size-1.5 rounded-full ${VERDICT_DOT[a.health]}`} />{a.schedules} schedule{a.schedules === 1 ? '' : 's'} · {VERDICT_WORD[a.health]}</span>
               </span>
               <span className="font-mono text-[0.625rem]/5 text-zinc-500 uppercase">{a.plan}</span>
             </Link>

@@ -52,3 +52,16 @@ test('import carries every cron and its timezone', () => {
 test('invalid YAML is a flag, not a crash', () => {
   expect(msgs('on: [unclosed\n')).toEqual([expect.stringMatching(/isn't valid YAML/)]);
 });
+
+test('a YAML error keeps its position but not the source line it quotes', () => {
+  const { flags } = checkWorkflow('on:\n  workflow_dispatch:\njobs:\n  a:\n    steps:\n      - run: [echo PRIVATE_LITERAL,\n', 5);
+  expect(flags).toHaveLength(1);
+  expect(flags[0].message).toMatch(/isn't valid YAML: .* at line \d+, column \d+$/);
+  expect(JSON.stringify(flags)).not.toContain('PRIVATE_LITERAL');
+});
+
+test('an unresolved alias error does not store the alias name', () => {
+  const { flags } = checkWorkflow('on:\n  workflow_dispatch:\njobs: *PRIVATE_ALIAS\n', 5);
+  expect(flags[0].message).toMatch(/isn't valid YAML: Unresolved alias/);
+  expect(JSON.stringify(flags)).not.toContain('PRIVATE_ALIAS');
+});

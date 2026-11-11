@@ -11,11 +11,17 @@ export function webApp(deps: Deps, opts: { webhookSecret: string }) {
   app.get('/healthz', async (c) => { await deps.db.query('SELECT 1'); return c.text('ok'); });
   // For the uptime monitor only: due slots are being picked up. A slot still waiting 2 minutes after it could
   // have been sent means no dispatcher is working, an outage for this product even while the site loads.
+  // A planner that stopped advancing (or never planned at all), or a lease nobody settled, is the same outage seen earlier.
+  // Settle runs about once a minute, so a lease is stranded only once it is 3 min past.
   // (Not used by the load balancer, or one lagging minute would take the whole site offline.)
   app.get('/healthz/dispatch', async (c) => {
-    const { rows } = await deps.db.query(
-      `SELECT count(*)::int AS n FROM slots WHERE state = 'pending' AND next_attempt_at < $1::timestamptz - interval '2 minutes'`, [deps.now()]);
-    const n = rows[0].n as number;
+    const { rows: [r] } = await deps.db.query(
+      `SELECT (SELECT count(*)::int FROM slots WHERE state = 'pending' AND next_attempt_at < $1::timestamptz - interval '2 minutes') AS waiting,
+              (SELECT count(*)::int FROM slots WHERE state = 'dispatching' AND lease_until < $1::timestamptz - interval '3 minutes') AS stranded,
+              (SELECT planned_until IS NULL OR planned_until < $1::timestamptz + interval '115 minutes' FROM planner) AS stale -- 2 h horizon less 5 min`, [deps.now()]);
+    if (r.stale) return c.text('planner stalled: slots are not being planned ahead', 503);
+    if (r.stranded) return c.text(`dispatch stuck: ${r.stranded} lease${r.stranded === 1 ? '' : 's'} expired over 3 min ago`, 503);
+    const n = r.waiting as number;
     return n ? c.text(`dispatch lagging: ${n} slot${n === 1 ? '' : 's'} waiting over 2 min`, 503) : c.text('ok');
   });
 

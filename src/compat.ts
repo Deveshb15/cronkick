@@ -32,7 +32,12 @@ export function checkWorkflow(text: string, floorMinutes: number): WorkflowCheck
   try {
     doc = parse(text);
   } catch (e) {
-    return { markers: [], flags: [{ message: `The workflow file isn't valid YAML: ${(e as Error).message}` }], suggestedDiff: null };
+    // The parser quotes the offending source line after its first line, and an alias error names the alias; both are
+    // the user's code, so neither is stored.
+    const at = (e as { linePos?: { line: number; col: number }[] }).linePos?.[0];
+    const first = (e as Error).message.split('\n')[0].replace(/:$/, '').replace(/^(Unresolved alias[^:]*):.*/, '$1');
+    const where = at && !/at line \d+/.test(first) ? ` at line ${at.line}, column ${at.col}` : '';
+    return { markers: [], flags: [{ line: at?.line, message: `The workflow file isn't valid YAML: ${first}${where}` }], suggestedDiff: null };
   }
   const on = triggers(doc);
   const suggestedDiff = importFromSchedule(on);

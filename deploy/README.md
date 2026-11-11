@@ -130,6 +130,14 @@ curl https://cronkick.xyz/healthz   # → ok
 
 Run `push.sh` the same way for every later release. Migrations run on boot.
 
+**Rolling back:** if you roll back to a release from before the planner watermark (`planner.planned_until`) and stay on it for longer than 2 h, run this before redeploying the newer release:
+
+```sql
+UPDATE planner SET planned_until = NULL;
+```
+
+The old release keeps planning but never moves the watermark, so without this the next deploy records the rollback as a Cronkick outage and emails Pro accounts about it. With it, the next deploy starts a fresh baseline and records no window for that time.
+
 ## 6. Monitoring
 
 - **Uptime:** a free check on `https://cronkick.xyz/healthz` every minute (Better Stack or UptimeRobot), alerting your phone.

@@ -17,6 +17,7 @@ test('plain-words cron for common shapes, raw cron otherwise', () => {
 test('durations', () => {
   expect(fmtDuration(9_400)).toBe('9 s');
   expect(fmtDuration(92_000)).toBe('1 min 32 s');
+  expect(fmtDuration(40_000)).toBe('40 s'); // the benchmark card's sub-minute median
   expect(fmtDuration(-5)).toBe('0 s');
 });
 
@@ -24,6 +25,8 @@ test('start delay formatting', () => {
   expect(fmtDelay(52)).toBe('+0.05 s');
   expect(fmtDelay(1_430)).toBe('+1.4 s');
   expect(fmtDelay(42_990)).toBe('+43.0 s');
+  expect(fmtDelay(240_000)).toBe('+4 min');
+  expect(fmtDelay(90_000)).toBe('+1 min 30 s');
   expect(fmtDelay(null)).toBe('—');
 });
 

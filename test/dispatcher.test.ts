@@ -2,6 +2,7 @@ import { afterAll, beforeEach, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
 import { claim, dispatchTick as queue, drain } from '../src/dispatcher.ts';
 import { materialize, settle } from '../src/maintenance.ts';
+import { sendSlotAlerts } from '../src/alerts.ts';
 import { DispatchTimeout, realGitHub } from '../src/github.ts';
 import { fakeDeps } from './fakes.ts';
 import { freshDb, seed } from './helpers.ts';
@@ -90,12 +91,57 @@ test('crash mid-dispatch: lost lease becomes unknown, never re-fired', async () 
   expect(f.gh.dispatches).toHaveLength(0);
 });
 
-test('422 (no workflow_dispatch trigger): unknown with the response stored', async () => {
+test('422 (no workflow_dispatch trigger): refused, with the response stored', async () => {
   await addSlot();
   const f = fakeDeps(db, T0);
   f.gh.responses = [{ status: 422, note: "Workflow does not have 'workflow_dispatch' trigger" }];
   await dispatchTick(f.deps);
-  expect(await slot()).toMatchObject({ state: 'unknown', response_status: 422, response_note: expect.stringMatching(/workflow_dispatch/) });
+  expect(await slot()).toMatchObject({ state: 'rejected', response_status: 422, response_note: expect.stringMatching(/workflow_dispatch/) });
+  expect(f.gh.dispatches).toHaveLength(1);
+});
+
+test('a throttled 403 and a 429 are retried, not refused', async () => {
+  await addSlot();
+  const f = fakeDeps(db, T0);
+  f.gh.responses = [{ status: 403, retryAfterMs: 1000 }, { status: 429 }];
+  await dispatchTick(f.deps);
+  expect(await slot()).toMatchObject({ state: 'pending', response_status: 403 });
+  f.clock.now = plus(3000);
+  await dispatchTick(f.deps);
+  expect(await slot()).toMatchObject({ state: 'pending', response_status: 429, attempts: 2 });
+});
+
+test('429, then a timeout: unknown with no stale status', async () => {
+  await addSlot();
+  const f = fakeDeps(db, T0);
+  f.gh.responses = [{ status: 429 }, new DispatchTimeout('No response from GitHub within 10 s')];
+  await dispatchTick(f.deps);
+  f.clock.now = plus(3000);
+  await dispatchTick(f.deps);
+  expect(await slot()).toMatchObject({ state: 'unknown', response_status: null, response_note: expect.stringMatching(/No response/) });
+});
+
+test('429, then the lease is lost mid-call: unknown with no stale status', async () => {
+  await addSlot();
+  const f = fakeDeps(db, T0);
+  f.gh.responses = [{ status: 429 }];
+  await dispatchTick(f.deps);
+  f.clock.now = plus(3000);
+  await claim(f.deps); // claimed again, then the process "dies"
+  f.clock.now = plus(64_000);
+  await settle(db, f.clock.now);
+  expect(await slot()).toMatchObject({ state: 'unknown', response_status: null });
+});
+
+test('a refused slot emails Pro once', async () => {
+  await db.query(`UPDATE installations SET alert_email = 'ops@acme.dev'`);
+  await addSlot();
+  const f = fakeDeps(db, T0);
+  f.gh.responses = [{ status: 404, note: 'Not Found' }];
+  await dispatchTick(f.deps);
+  expect(await sendSlotAlerts(f.deps)).toBe(1);
+  expect(await sendSlotAlerts(f.deps)).toBe(0);
+  expect(f.sent[0].text).toMatch(/GitHub refused the trigger: Not Found\..*won't retry/);
 });
 
 test('slots of a removed installation are not claimed', async () => {
@@ -126,8 +172,8 @@ test('a slot queued behind slow calls is handed back, not fired on an expiring l
   f.gh.dispatch = async (...a) => { const r = await orig(...a); f.clock.now = plus(50_000); return r; };
   await dispatchTick(f.deps);
   expect(f.gh.dispatches).toHaveLength(1);
-  const { rows } = await db.query(`SELECT state, attempts FROM slots ORDER BY due_at`);
-  expect(rows).toEqual([{ state: 'fired', attempts: 1 }, { state: 'pending', attempts: 0 }]);
+  const { rows } = await db.query(`SELECT state, attempts, first_attempt_at IS NOT NULL AS tried FROM slots ORDER BY due_at`);
+  expect(rows).toEqual([{ state: 'fired', attempts: 1, tried: true }, { state: 'pending', attempts: 0, tried: false }]);
   await dispatchTick(f.deps); // picked up again on the next tick
   expect(f.gh.dispatches).toHaveLength(2);
 });

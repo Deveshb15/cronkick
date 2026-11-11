@@ -3,9 +3,12 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'Cronkick: scheduled GitHub Actions that run on time', template: '%s · Cronkick' },
-  description: "GitHub's schedule trigger delays and drops runs. Cronkick fires your workflows on time from one comment in your workflow file, and records every run.",
+  title: { default: 'Cronkick: cron for GitHub Actions', template: '%s · Cronkick' },
+  description: "GitHub's schedule trigger can delay and drop runs. Cronkick sends your workflows within seconds of their scheduled time, from one comment in the workflow file, and shows what happened to each run.",
   metadataBase: new URL(process.env.BASE_URL ?? 'https://cronkick.xyz'),
+  // Static share image (brand lockup + pitch), 1200×630. No page sets its own openGraph, so this applies site-wide.
+  openGraph: { type: 'website', siteName: 'Cronkick', images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Cronkick: cron for GitHub Actions, from one comment in your workflow file' }] },
+  twitter: { card: 'summary_large_image' }, // title, description and image are filled from openGraph
   icons: { icon: [{ url: '/favicon.ico', sizes: '48x48' }, { url: '/favicon.svg', type: 'image/svg+xml' }], apple: '/apple-touch-icon.png' },
   manifest: '/site.webmanifest',
 };

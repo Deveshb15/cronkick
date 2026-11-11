@@ -5,10 +5,13 @@ export type { Tick };
 const color: Record<Tick, string> = {
   ontime: 'bg-ontime',
   late: 'bg-late',
+  waiting: 'tick-waiting',
+  overdue: 'tick-overdue',
+  unconfirmed: 'tick-unconfirmed',
   missed: 'bg-missed',
   idle: 'bg-white/10',
 };
-const label: Record<Tick, string> = { ontime: 'on time', late: 'late', missed: 'missed', idle: 'not run' };
+const label: Record<Tick, string> = { ontime: 'on time', late: 'late', waiting: 'sending', overdue: 'overdue', unconfirmed: 'unconfirmed', missed: 'missed', idle: 'not run' };
 
 /** `tips` adds a hover tooltip per tick (marketing pages). */
 export function SlotStrip({ ticks, size = 'md', className = '', tips }: { ticks: Tick[]; size?: 'sm' | 'md' | 'lg'; className?: string; tips?: string[] }) {

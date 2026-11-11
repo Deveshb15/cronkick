@@ -27,11 +27,13 @@ export function humanCron(cron: string): string {
   return cron;
 }
 
-/** Start delay as "+0.05 s": two decimals under a second, one above. */
+/** Start delay as "+0.05 s": two decimals under a second, one under a minute, then "+4 min" or "+1 min 30 s". */
 export function fmtDelay(ms: number | null): string {
   if (ms === null) return '—';
   const s = ms / 1000;
-  return `+${s < 1 ? s.toFixed(2) : s.toFixed(1)} s`;
+  if (s < 60) return `+${s < 1 ? s.toFixed(2) : s.toFixed(1)} s`;
+  const r = Math.round(s);
+  return `+${Math.floor(r / 60)} min${r % 60 ? ` ${r % 60} s` : ''}`;
 }
 
 /** A duration as "42 s" or "1 min 32 s". */

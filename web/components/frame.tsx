@@ -16,7 +16,3 @@ export function AppFrame({ url, children, className = '' }: { url: string; child
   );
 }
 
-/** A floating card layered over a product shot. */
-export function FloatCard({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-xl bg-zinc-900/90 p-4 shadow-xl shadow-black/50 inset-ring inset-ring-white/10 backdrop-blur ${className}`}>{children}</div>;
-}

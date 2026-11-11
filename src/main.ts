@@ -6,8 +6,8 @@ import type { Deps } from './deps.ts';
 import { githubApp, realGitHub } from './github.ts';
 import { resendMailer } from './mailer.ts';
 import { dispatchTick, drain } from './dispatcher.ts';
-import { materialize, settle } from './maintenance.ts';
-import { sendSlotAlerts } from './alerts.ts';
+import { planAhead, settle } from './maintenance.ts';
+import { sendGapAlerts, sendLimitNotices, sendSlotAlerts } from './alerts.ts';
 import { reconcileAll } from './sync.ts';
 import { collectProbes } from './probe/collector.ts';
 import { webApp } from './web/app.ts';
@@ -46,9 +46,15 @@ const loops = [
   loop('dispatch', 1000, () => dispatchTick(deps)),
   loop('maintenance', 60_000, async () => {
     const now = new Date();
-    await materialize(db, now);
+    await planAhead(db, now);
     await settle(db, now);
     await sendSlotAlerts(deps);
+    await sendGapAlerts(deps);
+    await sendLimitNotices(deps);
+  }),
+  // Probes and the daily reconcile call GitHub and can be slow; on their own loop they never hold up planning.
+  loop('background', 60_000, async () => {
+    const now = new Date();
     if (cfg.probeRepos.length && now.getTime() - lastProbe > 5 * 60_000) {
       lastProbe = now.getTime();
       await collectProbes(db, cfg.probeRepos, cfg.probeToken);

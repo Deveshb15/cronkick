@@ -1,6 +1,7 @@
+import type { Metadata } from 'next';
 import { AlertEmailForm } from '@/components/alert-email-form';
 import { ButtonLink } from '@/components/ui';
-import { requireInstallation } from '@/lib/access';
+import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
 import { accountHealth, installationsFor } from '@/lib/data';
 import { manageReposUrl } from '@/lib/format';
@@ -11,6 +12,12 @@ export const dynamic = 'force-dynamic';
 
 const container = 'mx-auto max-w-4xl px-4 sm:px-6 lg:px-10';
 const card = 'relative rounded-2xl bg-zinc-950 p-6 inset-ring inset-ring-white/10';
+
+export async function generateMetadata({ params }: { params: Promise<{ installationId: string }> }): Promise<Metadata> {
+  const id = Number((await params).installationId);
+  const inst = (await canSee(id)) ? (await installationsFor(db, [id]))[0] : null;
+  return { title: inst ? `Settings · ${inst.account_login}` : 'Settings' };
+}
 
 export default async function Settings({ params }: { params: Promise<{ installationId: string }> }) {
   const id = Number((await params).installationId);
@@ -52,7 +59,7 @@ export default async function Settings({ params }: { params: Promise<{ installat
           <thead className="text-xs/5 text-zinc-500"><tr className="border-b border-white/10"><th className="py-2 font-medium" /><th className={`font-medium ${free ? 'text-white' : ''}`}>Free</th><th className={`font-medium ${free ? '' : 'text-white'}`}>Pro · $9/mo</th></tr></thead>
           <tbody className="divide-y divide-white/5">{rows.map(([k, f, p]) => <tr key={k}><td className="py-2 text-zinc-400">{k}</td><td className={free ? '' : 'text-zinc-500'}>{f}</td><td className={free ? 'text-zinc-500' : ''}>{p}</td></tr>)}</tbody>
         </table>
-        {free && <p className="mt-3 text-xs/5 text-zinc-500">Pro is turned on by hand for now: we reply to your email and switch your account the same day.</p>}
+        {free && <p className="mt-3 text-xs/5 text-zinc-500">Pro is turned on by hand for now: email us and we switch your account. There is no card checkout yet.</p>}
       </section>
 
       <section className={card}>

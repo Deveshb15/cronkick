@@ -7,7 +7,7 @@ export default function DocsLayout({ children }: { children: ReactNode }) {
   const side = 'sticky top-16 h-[calc(100dvh-4rem)] overflow-y-auto';
   return (
     <>
-      <SiteHeader signedIn={false} />
+      <SiteHeader />
       <div className={`${container} lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-x-10 xl:grid-cols-[13rem_minmax(0,1fr)_11rem]`}>
         <aside className={`${side} border-r border-white/5 py-10 pr-4 max-lg:hidden`}><DocsNav /></aside>
         <main className="min-w-0 pt-8 pb-24 lg:pt-12">

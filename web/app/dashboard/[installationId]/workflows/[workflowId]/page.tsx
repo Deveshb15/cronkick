@@ -1,49 +1,50 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { HistoryTable } from '@/components/history-table';
 import { GitHubMark } from '@/components/icons';
 import { Countdown, Time } from '@/components/live';
 import { LiveStrip } from '@/components/live-strip';
-import { Code } from '@/components/ui';
-import { requireInstallation } from '@/lib/access';
+import { AlertHint, Code, GapBanner, Ticks, VERDICT_DOT, VERDICT_WORD } from '@/components/ui';
+import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { MAX_ROWS, recentSlots, workflowHistory, type Flag, type Health, type HistoryFilter, type Schedule } from '@/lib/data';
+import { MAX_ROWS, recentSlots, workflowHistory, type Flag, type HistoryFilter, type Schedule } from '@/lib/data';
 import { humanCron } from '@/lib/live';
 
 export const dynamic = 'force-dynamic';
 
-const HEALTH: Record<Health, { label: string; cls: string }> = {
-  on_time: { label: 'Healthy', cls: 'bg-emerald-400/10 text-emerald-300 inset-ring-emerald-400/25' },
-  late: { label: 'Late runs', cls: 'bg-orange-400/10 text-orange-300 inset-ring-orange-400/25' },
-  missed: { label: 'Missed runs', cls: 'bg-red-500/10 text-red-300 inset-ring-red-500/25' },
-  no_runs: { label: 'No runs yet', cls: 'bg-white/5 text-zinc-300 inset-ring-white/10' },
-};
 const FILTERS: { key: HistoryFilter | undefined; label: string }[] = [
-  { key: undefined, label: 'All' }, { key: 'late', label: 'Late' }, { key: 'missed', label: 'Missed' }, { key: 'failed', label: 'Failed jobs' },
+  { key: undefined, label: 'All' }, { key: 'late', label: 'Late' }, { key: 'missed', label: 'Missed' }, { key: 'unconfirmed', label: 'Unconfirmed' }, { key: 'failed', label: 'Failed jobs' },
 ];
 const container = 'mx-auto max-w-6xl px-4 sm:px-6 lg:px-10';
 
-function Ticks({ text }: { text: string }) {
-  return <>{text.split(/(`[^`]+`)/).map((part, i) => (part.startsWith('`') ? <Code key={i}>{part.slice(1, -1)}</Code> : part))}</>;
+export async function generateMetadata({ params }: { params: Promise<{ installationId: string; workflowId: string }> }): Promise<Metadata> {
+  const p = await params;
+  const id = Number(p.installationId);
+  const w = Number.isSafeInteger(Number(p.workflowId)) && (await canSee(id)) && (await db.query(
+    'SELECT w.name, r.full_name FROM workflows w JOIN repos r ON r.id = w.repo_id WHERE w.id = $1 AND r.installation_id = $2', [Number(p.workflowId), id],
+  )).rows[0];
+  return { title: w ? `${w.name} · ${w.full_name}` : 'Workflow' };
 }
 
 export default async function WorkflowPage({ params, searchParams }: {
-  params: Promise<{ installationId: string; workflowId: string }>; searchParams: Promise<{ filter?: string }>;
+  params: Promise<{ installationId: string; workflowId: string }>; searchParams: Promise<{ filter?: string; before?: string }>;
 }) {
   const p = await params;
   const id = Number(p.installationId);
   const wid = Number(p.workflowId);
   const q = await searchParams;
-  const filter = (['late', 'missed', 'failed'] as const).find((f) => f === q.filter);
+  const filter = (['late', 'missed', 'unconfirmed', 'failed'] as const).find((f) => f === q.filter);
   await requireInstallation(id, `/dashboard/${id}/workflows/${wid}`);
   const now = new Date();
-  const [h, strips] = await Promise.all([workflowHistory(db, id, wid, now, filter), recentSlots(db, id, now, 96)]);
+  const before = q.before ? new Date(q.before) : undefined; // workflowHistory ignores a malformed one
+  const [h, strips] = await Promise.all([workflowHistory(db, id, wid, now, filter, before), recentSlots(db, id, now, 96)]);
   if (!h) notFound();
   const w = h.workflow;
   const schedules = w.schedules as Schedule[];
   const flags = w.flags as Flag[];
-  const active = schedules.some((s) => s.status === 'active') && !flags.length && w.present;
-  const health = HEALTH[h.health];
+  const active = h.status === 'active' && w.present;
+  const word = VERDICT_WORD[h.health];
   const words = schedules.map((s) => `${humanCron(s.cron)} · ${s.tz}`).join(' and ') || 'No schedule';
   const window = h.limits.historyRows ? `last ${h.limits.historyRows} slots` : `last ${h.limits.historyDays} days`;
   return (
@@ -57,7 +58,7 @@ export default async function WorkflowPage({ params, searchParams }: {
             <div className="min-w-0">
               <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight sm:text-3xl">
                 {w.name}
-                <span className={`rounded-full px-2.5 py-0.5 text-xs/5 font-medium inset-ring ${health.cls}`}>● {health.label}</span>
+                <span className="inline-flex items-center gap-x-1.5 rounded-full bg-white/5 px-2.5 py-0.5 text-xs/5 font-medium text-zinc-200 inset-ring inset-ring-white/10"><span aria-hidden="true" className={`size-2 rounded-full ${VERDICT_DOT[h.health]}`} />{word[0].toUpperCase() + word.slice(1)}</span>
               </h1>
               <p className="mt-2 text-sm/6 text-zinc-400">{words} <span className="ml-1 font-mono text-xs/5 text-zinc-600">{schedules.map((s) => s.cron).join(' · ')} · {w.path}</span></p>
             </div>
@@ -73,8 +74,10 @@ export default async function WorkflowPage({ params, searchParams }: {
               <p className="text-sm/6 text-zinc-300">This file was removed from {w.full_name}. Its history stays for the {window}.</p>
             ) : flags.length ? (
               <div className="text-sm/6"><p className="font-medium text-red-300">Not running: this workflow needs a fix</p><ul role="list" className="mt-2 space-y-1 text-red-300/90">{flags.map((f) => <li key={f.message}><Ticks text={f.message} /></li>)}</ul></div>
+            ) : h.status === 'limited' ? (
+              <p className="text-sm/6 text-zinc-300">Paused: you’re using every schedule on your plan. Remove a <Code># cronkick</Code> line elsewhere, or upgrade for more.{!w.alert_email && <> <AlertHint id={id} /></>}</p>
             ) : !active ? (
-              <p className="text-sm/6 text-zinc-300">Paused: you’re using every schedule on your plan. Remove a <Code># cronkick</Code> line elsewhere, or upgrade for more.</p>
+              <p className="text-sm/6 text-zinc-300">Not scheduled: this file has no <Code># cronkick</Code> line. Its history stays for the {window}.</p>
             ) : (
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
@@ -84,7 +87,7 @@ export default async function WorkflowPage({ params, searchParams }: {
                 {h.next && <Countdown to={h.next} className="font-mono text-4xl font-medium text-brand-400" />}
               </div>
             )}
-            <div className="mt-5 flex items-center justify-between text-xs/5 text-zinc-500"><span>Last 96 scheduled times</span><span className="max-sm:hidden">Click a tick to find it in the history</span></div>
+            <div className="mt-5 flex items-center justify-between text-xs/5 text-zinc-500"><span>Last 96 recorded times</span><span className="max-sm:hidden">Click a tick to find it in the history</span></div>
             <div className="mt-2"><LiveStrip slots={strips.get(wid) ?? []} positions={96} next={active && !!h.next} height="h-12" linkRows /></div>
           </div>
         </div>
@@ -94,7 +97,7 @@ export default async function WorkflowPage({ params, searchParams }: {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base/7 font-semibold">History</h2>
-            <p className="text-xs/5 text-zinc-500">The {window} on {h.plan === 'pro' ? 'Pro' : 'Free'}{h.slots.length === MAX_ROWS ? ` · newest ${MAX_ROWS} shown` : ''}. Click a row to see every step.</p>
+            <p className="text-xs/5 text-zinc-500">The {window} on {h.plan === 'pro' ? 'Pro' : 'Free'}{h.hasOlder || before ? ` · ${MAX_ROWS} at a time` : ''}. Click a row to see every step.</p>
           </div>
           <nav className="flex gap-1 rounded-lg bg-white/5 p-0.5 text-xs/5">
             {FILTERS.map((f) => (
@@ -103,11 +106,18 @@ export default async function WorkflowPage({ params, searchParams }: {
             ))}
           </nav>
         </div>
+        <GapBanner gaps={h.gaps} className="mt-4" />
         <div className="mt-4">
           {h.slots.length
             ? <HistoryTable rows={h.slots} />
-            : <p className="rounded-2xl px-4 py-8 text-center text-sm/6 text-zinc-500 inset-ring inset-ring-white/10">{filter ? 'Nothing here. Good news.' : h.next ? 'History starts after the first scheduled time.' : 'No runs yet.'}</p>}
+            : <p className="rounded-2xl px-4 py-8 text-center text-sm/6 text-zinc-500 inset-ring inset-ring-white/10">{before ? 'Nothing older in this window.' : filter ? 'Nothing here. Good news.' : h.next ? 'History starts after the first scheduled time.' : 'No runs yet.'}</p>}
         </div>
+        {(h.hasOlder || before) && (
+          <div className="mt-4 flex justify-center gap-4 text-sm/6 font-medium">
+            {before && <Link href={filter ? `?filter=${filter}` : '?'} className="text-zinc-400 hover:text-white">← Newest</Link>}
+            {h.hasOlder && <Link href={`?${new URLSearchParams({ ...(filter && { filter }), before: h.slots[h.slots.length - 1].due })}`} className="text-brand-400 hover:text-brand-300">Load older →</Link>}
+          </div>
+        )}
       </section>
     </>
   );

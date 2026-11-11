@@ -10,7 +10,10 @@ afterAll(() => db.end());
 test('migrate is idempotent', async () => {
   expect(await migrate(db)).toEqual([]);
   const { rows } = await db.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public'`);
-  expect(rows[0].n).toBe(8); // 7 tables + schema_migrations
+  expect(rows[0].n).toBe(11); // 10 tables + schema_migrations
+  expect((await db.query('SELECT planned_until FROM planner')).rows).toEqual([{ planned_until: null }]);
+  expect((await db.query('SELECT count(*)::int AS n FROM coverage_gaps')).rows[0].n).toBe(0);
+  expect((await db.query('SELECT count(*)::int AS n FROM probe_health')).rows[0].n).toBe(0);
 });
 
 test('slot key is unique', async () => {
@@ -35,7 +38,7 @@ test('missing DATABASE_URL is a named config error', () => {
 test('two servers migrating at once both succeed', async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   const results = await Promise.all([migrate(db), migrate(db)]);
-  expect(results.flat()).toEqual(['001_init.sql', '002_notify.sql', '003_run_times_and_dismiss.sql']);
+  expect(results.flat()).toEqual(['001_init.sql', '002_notify.sql', '003_run_times_and_dismiss.sql', '004_refused_and_coverage.sql', '005_probe_health.sql', '006_probe_bootstrap.sql']);
 });
 
 test('a GitHub-style PKCS#1 App key can sign the App JWT', async () => {
