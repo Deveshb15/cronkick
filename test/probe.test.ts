@@ -84,13 +84,13 @@ describe('collector health and report', () => {
 
   // Pairs: GitHub's hourly probe against its Cronkick twin, inserted directly. Times on Nov 10, last check at `check`.
   const GH = HOURLY, CK = '.github/workflows/cronkick-hourly.yml';
-  const pairDb = async (check: string, rows: [string, string, string][], states: Record<string, string> = {}, sampleFrom: string | null = null) => {
+  const pairDb = async (check: string, rows: [string, string, string][], states: Record<string, string> = {}, sampleFrom: string | null = null, added: string | null = null) => {
     await db.query('INSERT INTO probe_health (repo, private, last_attempt_at, last_success_at, sample_from) VALUES ($1, false, $2, $2, $3)',
       ['acme/p', at(check), sampleFrom && at(sampleFrom)]);
     for (const [i, [wf, due, started]] of rows.entries()) {
       await db.query('INSERT INTO probe_runs (run_id, repo, workflow, cron, due_at, started_at) VALUES ($1, $2, $3, $4, $5, $6)', [i + 1, 'acme/p', wf, '0 * * * *', at(due), at(started)]);
     }
-    for (const [path, state] of Object.entries(states)) await db.query('INSERT INTO probe_workflows VALUES ($1, $2, $3, $4)', ['acme/p', path, state, at(check)]);
+    for (const [path, state] of Object.entries(states)) await db.query('INSERT INTO probe_workflows (repo, path, state, checked_at, created_at) VALUES ($1, $2, $3, $4, $5)', ['acme/p', path, state, at(check), added && at(added)]);
     const now = at(check);
     return (await probePairs(db, await probeReport(db, ['acme/p'], now), now)).find((x) => x.cron === '0 * * * *')!;
   };
@@ -111,7 +111,8 @@ describe('collector health and report', () => {
   test('pairs: under 6 h of shared time is collecting, with how long so far', async () => {
     const short = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600), ...hourly(CK, 16, 20, 1)]);
     expect(short).toMatchObject({ state: 'collecting', hours: 4 });
-    expect(short.reason).toMatch(/4 h so far/);
+    expect(short.reason).toMatch(/4 h measured so far/);
+    expect(short.github.stats.expected).toBe(5); // early numbers are still returned
   });
 
   test('pairs: no twin runs yet is collecting', async () => {
@@ -123,6 +124,25 @@ describe('collector health and report', () => {
     const p = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600), ...hourly(CK, 2, 20, 1)], { [GH]: 'disabled_inactivity', [CK]: 'active' });
     expect(p).toMatchObject({ state: 'paused', reason: 'The GitHub schedule: workflow was turned off by GitHub after 60 days without commits, so this pair isn’t counted until it runs again' });
     expect(p.github.stats.expected).toBe(0);
+  });
+
+  test('pairs: with creation dates, the window starts an hour after both files were added, and a side that never ran counts', async () => {
+    // Both added at 05:30, so measured from 06:30 to 20:00 (due 07:00..20:00, 14). GitHub first ran only at 15:00.
+    const p = await pairDb('21:00:00', [...hourly(GH, 15, 20, 600), ...hourly(CK, 7, 20, 1)], { [GH]: 'active', [CK]: 'active' }, null, '05:30:00');
+    expect(p).toMatchObject({ state: 'compared', from: at('06:30:00') });
+    expect(p.github.stats).toMatchObject({ expected: 14, ran: 6 });
+    expect(p.cronkick.stats).toMatchObject({ expected: 14, ran: 14 });
+  });
+
+  test('pairs: before an hour has passed since the files were added, it says when measuring starts', async () => {
+    const p = await pairDb('21:00:00', [], { [GH]: 'active', [CK]: 'active' }, null, '19:45:00');
+    expect(p).toMatchObject({ state: 'collecting', reason: 'Measuring starts 20:45 UTC, an hour after both workflows were added' });
+    expect(p.github.stats.expected).toBe(0);
+  });
+
+  test('pairs: a twin that is not in the repo yet says so', async () => {
+    const p = await pairDb('21:00:00', hourly(GH, 2, 20, 600), { [GH]: 'active', [CK]: 'missing' }, null, '01:00:00');
+    expect(p).toMatchObject({ state: 'collecting', reason: 'The Cronkick twin isn’t in the repo yet' });
   });
 
   test('pairs: the sample start bounds the window when it is later than both first runs', async () => {

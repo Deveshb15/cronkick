@@ -98,7 +98,7 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
           <h2 className="text-base/7 font-semibold text-white">The same workflow, run two ways</h2>
           <p className="text-sm/6 text-pretty text-zinc-400">
             {humanCron(p.cron)} in one repo: once on GitHub’s own <code className="font-mono">schedule:</code>, once triggered by Cronkick. Both read from GitHub’s run list.
-            {p.state === 'compared' && ` ${Math.floor(p.hours)}\u00a0h measured.`}
+            {p.github.stats.expected > 0 && ` ${Math.floor(p.hours)}\u00a0h measured.`}
           </p>
         </div>
         {!compact && pairs.length > 1 && (
@@ -111,11 +111,12 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
         )}
       </div>
 
-      {p.state !== 'compared' ? (
+      {p.reason && (
         <p className="rounded-xl bg-white/[0.02] px-4 py-3 text-sm/6 text-zinc-300 inset-ring inset-ring-white/5">
-          <span className="font-medium text-white">{p.state === 'paused' ? 'Paused.' : 'Collecting.'}</span> {p.reason}.
+          <span className="font-medium text-white">{p.state === 'paused' ? 'Paused.' : p.github.stats.expected ? 'Early.' : 'Starting.'}</span> {p.reason}.
         </p>
-      ) : (
+      )}
+      {p.state !== 'paused' && p.github.stats.expected > 0 && (
         <>
           <Numbers p={p} />
 
