@@ -1,7 +1,7 @@
 ---
 title: "feat: Show how GitHub actually runs each workflow still on its schedule"
 type: feat
-status: active
+status: completed
 date: 2026-11-11
 ---
 
