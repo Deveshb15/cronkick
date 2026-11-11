@@ -1,9 +1,16 @@
 import { CronExpressionParser } from 'cron-parser';
 
+/**
+ * Probe workflows, in pairs with the same cron: one run by GitHub's own `schedule:`, its twin triggered by Cronkick
+ * (`workflow_dispatch`). Both are measured the same way, from GitHub's run list.
+ */
 export const PROBE_WORKFLOWS = [
-  { file: '.github/workflows/every-5.yml', cron: '*/5 * * * *' },
-  { file: '.github/workflows/hourly.yml', cron: '0 * * * *' },
+  { file: '.github/workflows/every-5.yml', cron: '*/5 * * * *', via: 'github' },
+  { file: '.github/workflows/cronkick-5.yml', cron: '*/5 * * * *', via: 'cronkick' },
+  { file: '.github/workflows/hourly.yml', cron: '0 * * * *', via: 'github' },
+  { file: '.github/workflows/cronkick-hourly.yml', cron: '0 * * * *', via: 'cronkick' },
 ] as const;
+export type ProbeWorkflow = (typeof PROBE_WORKFLOWS)[number];
 
 /** Slots older than this with no run count as dropped. */
 export const GRACE_MS = 60 * 60_000;

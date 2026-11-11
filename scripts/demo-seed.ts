@@ -177,7 +177,7 @@ if (process.env.DEMO_PROBES === 'thin') {
   await db.query('INSERT INTO probe_health (repo, private, last_attempt_at, last_success_at) VALUES ($1, true, $2, $2)', [probes[0], ago(3 * 60_000)]);
 } else for (const repo of probes) {
   for (const wf of [{ file: '.github/workflows/every-5.yml', cron: '*/5 * * * *', step: 5 }, { file: '.github/workflows/hourly.yml', cron: '0 * * * *', step: 60 }]) {
-    for (let t = Math.ceil(ago(7 * 24 * H).getTime() / (wf.step * 60_000)) * wf.step * 60_000; t < ago(2 * H).getTime(); t += wf.step * 60_000) {
+    for (let t = Math.ceil(ago(7 * 24 * H).getTime() / (wf.step * 60_000)) * wf.step * 60_000; t < ago(10 * 60_000).getTime(); t += wf.step * 60_000) {
       if (rnd() < (wf.step === 5 ? 0.07 : 0.03)) continue; // GitHub dropped it
       const late = (wf.step === 60 && new Date(t).getUTCMinutes() === 0 ? 4 : 1) * 60 * (0.5 + rnd() ** 3 * 18);
       await db.query('INSERT INTO probe_runs (run_id, repo, workflow, cron, due_at, started_at) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -185,6 +185,21 @@ if (process.env.DEMO_PROBES === 'thin') {
     }
   }
   await db.query('INSERT INTO probe_health (repo, private, last_attempt_at, last_success_at) VALUES ($1, false, $2, $2)', [repo, ago(3 * 60_000)]);
+}
+
+// Cronkick twins next to each GitHub probe, in the first repo: every 5 min for 2 days, hourly only 4 h (still collecting).
+// DEMO_PROBES=paused: GitHub turned the every-5 probe off. Twins land 1-2 s after the minute, as dispatches do.
+const twinRepo = probes[0];
+for (const [file, cron, step, hours] of [['.github/workflows/cronkick-5.yml', '*/5 * * * *', 5, 48], ['.github/workflows/cronkick-hourly.yml', '0 * * * *', 60, 4]] as const) {
+  const until = ago(10 * 60_000);
+  for (let t = Math.ceil(ago(hours * H).getTime() / (step * 60_000)) * step * 60_000; t < until.getTime(); t += step * 60_000) {
+    await db.query('INSERT INTO probe_runs (run_id, repo, workflow, cron, due_at, started_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [run++, twinRepo, file, cron, new Date(t), new Date(t + (0.6 + rnd() * 1.4) * 1000 + (step === 60 ? rnd() * 15_000 : 0))]);
+  }
+}
+for (const f of ['every-5', 'cronkick-5', 'hourly', 'cronkick-hourly']) {
+  const state = process.env.DEMO_PROBES === 'paused' && f === 'every-5' ? 'disabled_inactivity' : 'active';
+  await db.query('INSERT INTO probe_workflows (repo, path, state, checked_at) VALUES ($1, $2, $3, $4)', [twinRepo, `.github/workflows/${f}.yml`, state, ago(3 * 60_000)]);
 }
 
 console.log(`Seeded ${(await db.query('SELECT count(*) FROM slots')).rows[0].count} slots across 6 accounts, ${run - 1} probe runs.`);

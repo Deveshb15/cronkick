@@ -1,4 +1,4 @@
-import type { ProbeReport } from '../../src/probe/collector.ts';
+import type { Pair, ProbeReport } from '../../src/probe/collector.ts';
 import type { Evidence } from '../../src/schedule-watch.ts';
 import type { Counts24, SlotView, Verdict, WorkflowStatus } from './data.ts';
 import { fmtAge, fmtDuration, plural } from './live.ts';
@@ -119,3 +119,8 @@ export function evidenceLine(e: Evidence, now: Date): { text: string; bad: boole
   const late = e.p50Sec === null ? '' : ` · median ${e.p50Sec < 60 ? `${Math.round(e.p50Sec)} s` : `${Math.round(e.p50Sec / 60)} min`} late`;
   return { text: `GitHub ran it ${e.ran} of ${plural(e.due, 'time')} ${window}${late}`, bad: e.due - e.ran >= e.due / 10 };
 }
+
+/** A probe pair as plain data for the client charts (dates as ISO strings). */
+export const pairView = (p: Pair) => ({
+  ...p, from: p.from?.toISOString() ?? null, until: p.until?.toISOString() ?? null, ticks: p.ticks.map((t) => ({ ...t, due: t.due.toISOString() })),
+});

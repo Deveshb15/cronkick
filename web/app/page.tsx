@@ -8,9 +8,34 @@ import { MarkerCard } from '@/components/marker-card';
 import { DashboardShot, DiffVignette } from '@/components/product';
 import { BentoCard, SplitHeading } from '@/components/section';
 import { SiteFooter, SiteHeader, container } from '@/components/site';
+import { ProbeCharts } from '@/components/probe-charts';
 import { TimelineCompare } from '@/components/timeline-compare';
 import { ButtonLink, Code, Eyebrow } from '@/components/ui';
-import { installUrl } from '@/lib/format';
+import { db } from '@/lib/db';
+import { installUrl, pairView } from '@/lib/format';
+import { probeRepos } from '../../src/config.ts';
+import { HOME_MIN_HOURS, probePairs, probeReport } from '../../src/probe/collector.ts';
+
+/**
+ * The measured every-5-minutes pair, once both sides share a full day; null keeps the illustration. Kept for a minute
+ * per server: the home page is the busiest page and the probes only change every 5 minutes.
+ */
+let cache: { at: number; value: Promise<ReturnType<typeof pairView> | null> } | null = null;
+function measured() {
+  if (!cache || Date.now() - cache.at > 60_000) cache = { at: Date.now(), value: read() };
+  return cache.value;
+}
+async function read() {
+  try {
+    const now = new Date();
+    const pairs = await probePairs(db, await probeReport(db, probeRepos(), now), now);
+    const p = pairs.find((x) => x.cron === '*/5 * * * *');
+    return p && p.state === 'compared' && p.hours >= HOME_MIN_HOURS ? pairView(p) : null;
+  } catch (e) {
+    console.error('home: probe pairs', e);
+    return null;
+  }
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +73,8 @@ const faqs: { q: string; a: ReactNode }[] = [
   { q: 'What happens at my plan’s limit?', a: 'Extra schedules pause, and we email you if you’ve added an alert address in Settings. We never charge for going over.' },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const pair = await measured();
   return (
     <>
       <SiteHeader />
@@ -91,9 +117,11 @@ export default function Home() {
         <section className="py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="The problem" title="GitHub’s scheduler is best effort. Your jobs aren’t.">
-              <p>GitHub’s own docs say scheduled runs can be delayed at busy times, and some are dropped. Below is an illustration, not measured data. <a href="/lateness" className="font-medium text-white hover:underline">See what we’ve measured →</a></p>
+              {pair
+                ? <p>We run the same workflow every 5 minutes, once on GitHub’s own <Code>schedule:</Code> and once with Cronkick, in one {pair.isPublic ? 'public ' : ''}repository. Measured live from GitHub’s run list. <a href="/lateness" className="font-medium text-white hover:underline">See every run →</a></p>
+                : <p>GitHub’s own docs say scheduled runs can be delayed at busy times, and some are dropped. Below is an illustration, not measured data. <a href="/lateness" className="font-medium text-white hover:underline">See what we’ve measured →</a></p>}
             </SplitHeading>
-            <div className="mt-14"><TimelineCompare /></div>
+            <div className="mt-14">{pair ? <ProbeCharts pairs={[pair]} compact /> : <TimelineCompare />}</div>
           </div>
         </section>
 
