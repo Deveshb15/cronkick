@@ -1,9 +1,10 @@
 'use client';
-import { XMarkIcon } from '@heroicons/react/16/solid';
+import { ChevronRightIcon, XMarkIcon } from '@heroicons/react/16/solid';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import type { ActivityItem } from '@/lib/data';
+import type { ActivityItem, ExceptionItem } from '@/lib/data';
 import { fmtDelay, newIds } from '@/lib/live';
-import { JobResult, SLOT_ICON, SLOT_LABEL, SLOT_TONE, slotHelp, tones } from './ui';
+import { JobFailedPill, LatePill, SLOT_ICON, SLOT_LABEL, SLOT_TONE, SlotPill, slotHelp, tones } from './ui';
 import { Time, useArrivals } from './live';
 
 const ok = (s: string) => s === 'accepted' || s === 'fired';
@@ -13,35 +14,49 @@ const Icon = ({ i, className }: { i: ActivityItem; className: string }) => {
   const I = SLOT_ICON[i.display];
   return I ? <I aria-hidden="true" className={`${className} fill-current`} /> : null;
 };
-const sent = (i: ActivityItem) => fmtDelay(i.sendDelayMs);
 const short = (repo: string) => repo.split('/')[1] ?? repo;
 
-/** Newest dispatches across the account. Rows that arrive while the page is open flash once. */
-export function ActivityFeed({ items }: { items: ActivityItem[] }) {
+const detail = (i: ExceptionItem) => ({
+  overdue: i.retrying ? 'GitHub returned errors; retrying' : 'not sent yet',
+  missed: i.display === 'rejected' ? 'GitHub refused the trigger' : 'not sent before its deadline',
+  unconfirmed: 'sent, but GitHub didn’t confirm it',
+  failed: 'the job failed on GitHub',
+  late: `sent ${fmtDelay(i.sendDelayMs)}`,
+}[i.reason]);
+
+/**
+ * Runs of the last 24 h that need a look, most serious first. Each opens its workflow's history, filtered to that kind.
+ * Shown only when there is something in it.
+ */
+export function NeedsAttention({ installationId, items, more }: { installationId: number; items: ExceptionItem[]; more: number }) {
   const fresh = useArrivals(items.map((i) => i.id));
-  if (!items.length) return <p className="rounded-2xl px-4 py-6 text-sm/6 text-zinc-500 ring-1 ring-white/10 ring-inset">Dispatches show up here as they happen.</p>;
   return (
-    <ul role="list" className="divide-y divide-white/5 rounded-2xl text-sm/6 ring-1 ring-white/10 ring-inset">
-      {items.map((i) => (
-        <li key={i.id} className={`flex items-center gap-x-3 px-4 py-2.5 max-sm:flex-wrap max-sm:gap-y-0.5 ${fresh.has(i.id) ? 'row-flash' : ''}`}>
-          <span title={slotHelp(i.display, i.retrying)} className={`grid size-5 shrink-0 place-items-center rounded-full ${tone(i)}`}>
-            <Icon i={i} className="size-3.5" />
-          </span>
-          <Time iso={i.due} className="w-12 shrink-0 font-mono text-xs/5 text-zinc-500" />
-          <span className="min-w-0 truncate max-sm:flex-1">{i.workflow} <span className="text-zinc-500">· {short(i.repo)}</span></span>
-          <span className={`shrink-0 rounded-sm px-1 font-mono text-xs/5 ${ok(i.state) ? 'text-emerald-300' : tone(i)}`}>{ok(i.state) ? sent(i) : SLOT_LABEL[i.display]}</span>
-          {/* Below sm the job result gets its own line, under the time, instead of being cut. */}
-          <span className="shrink-0 text-xs/5 max-sm:order-last max-sm:w-full max-sm:pl-8 sm:ml-auto"><JobResult conclusion={i.conclusion} display={i.display} /></span>
-          {i.runUrl && <a href={i.runUrl} className="shrink-0 font-mono text-xs/5 text-zinc-400 hover:text-white">run ↗</a>}
+    <ul role="list" className="divide-y divide-white/5 rounded-xl text-sm/6 inset-ring inset-ring-white/10">
+      {items.map((i, n) => (
+        // Phones show three, so the schedules start on the first screen; the rest are counted below.
+        <li key={i.id} className={`${fresh.has(i.id) ? 'row-flash' : ''} ${n >= 3 ? 'max-sm:hidden' : ''}`}>
+          <Link href={`/dashboard/${installationId}/workflows/${i.workflowId}?before=${encodeURIComponent(new Date(Date.parse(i.due) + 1).toISOString())}#slot-${i.id}`}
+            className="group grid grid-cols-[7.5rem_minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 transition hover:bg-white/[0.03] max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:gap-y-1">
+            <span className="max-sm:order-2 max-sm:justify-self-end">
+              {i.reason === 'failed' ? <JobFailedPill /> : i.reason === 'late' ? <LatePill /> : <SlotPill state={i.display} retrying={i.retrying} />}
+            </span>
+            <span className="min-w-0 max-sm:order-1">
+              <span className="font-medium">{i.workflow}</span> <span className="text-zinc-400">· {short(i.repo)}</span>
+              <span className="block truncate text-[13px]/5 text-zinc-400"><Time iso={i.due} /> · {detail(i)}</span>
+            </span>
+            <ChevronRightIcon aria-hidden="true" className="size-4 fill-zinc-500 transition group-hover:translate-x-0.5 group-hover:fill-zinc-300 max-sm:hidden" />
+          </Link>
         </li>
       ))}
+      {more > 0 && <li className="px-4 py-2.5 text-[13px]/5 text-zinc-400 max-sm:hidden">and {more} more in the last 24 h. Open a schedule below to see its history.</li>}
+      {more + Math.max(0, items.length - 3) > 0 && items.length > 3 && <li className="px-4 py-2.5 text-[13px]/5 text-zinc-400 sm:hidden">and {more + items.length - 3} more in the last 24 h.</li>}
     </ul>
   );
 }
 
 type Toast = { id: number; item: ActivityItem };
 
-/** A toast for each dispatch that happens while the page is open. Successes fade after 6 s; problems stay until closed. */
+/** A toast for each problem that happens while the page is open; it stays until closed. Successes show in the strips only. */
 export function DispatchToasts({ items }: { items: ActivityItem[] }) {
   const seen = useRef(new Set<number>());
   const first = useRef(true);
@@ -51,9 +66,10 @@ export function DispatchToasts({ items }: { items: ActivityItem[] }) {
     const fresh = newIds(seen.current, items.map((i) => i.id), first.current);
     first.current = false;
     if (!fresh.length) return;
-    const add = items.filter((i) => fresh.includes(i.id)).map((item) => ({ id: item.id, item }));
+    // A late send is a problem too, but a small one: the strip and Needs attention already show it.
+    const add = items.filter((i) => fresh.includes(i.id) && !ok(i.state)).map((item) => ({ id: item.id, item }));
+    if (!add.length) return;
     setToasts((t) => [...add, ...t].slice(0, 3));
-    add.filter((t) => ok(t.item.state)).forEach((t) => setTimeout(() => setToasts((all) => all.filter((x) => x.id !== t.id)), 6000));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const close = (id: number) => setToasts((all) => all.filter((x) => x.id !== id));
@@ -65,8 +81,8 @@ export function DispatchToasts({ items }: { items: ActivityItem[] }) {
             <Icon i={item} className="size-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm/5 font-medium">{ok(item.state) ? `Sent ${item.workflow}` : `${SLOT_LABEL[item.display]}: ${item.workflow}`}</p>
-            <p className="truncate font-mono text-[0.6875rem]/5 text-zinc-500">{short(item.repo)} · {ok(item.state) ? sent(item) : slotHelp(item.display, item.retrying)}</p>
+            <p className="truncate text-sm/5 font-medium">{SLOT_LABEL[item.display]}: {item.workflow}</p>
+            <p className="text-[13px]/5 text-pretty text-zinc-400">{short(item.repo)} · {slotHelp(item.display, item.retrying)}</p>
           </div>
           <button type="button" onClick={() => close(id)} className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-white"><XMarkIcon aria-hidden="true" className="size-4 fill-current" /><span className="sr-only">Dismiss</span></button>
         </div>

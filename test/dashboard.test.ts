@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
-import { accountHealth, activity, overview, recentSlots, setDismissed, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
+import { accountHealth, activity, exceptions, overview, recentSlots, setDismissed, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
 import { VERDICT } from '../web/lib/format.ts';
 import { decodeSession, encodeSession } from '../web/lib/session.ts';
 import { freshDb, seed } from './helpers.ts';
@@ -77,7 +77,7 @@ test('overview: verdicts, median delay and job results', async () => {
   expect((await overview(db, 1, NOW)).totals.verdict).toBe('late');
 });
 
-test('overview and history: a coverage gap in range blocks on time and is shown', async () => {
+test('overview and history: a coverage gap in range is shown, but never sets the verdict', async () => {
   await seed(db);
   await db.query(`INSERT INTO schedules (workflow_id, cron, created_at) VALUES (100, '*/5 * * * *', $1)`, [ago(60 * 48)]);
   await slot(5, 'accepted', 1);
@@ -85,7 +85,7 @@ test('overview and history: a coverage gap in range blocks on time and is shown'
   expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [] });
   await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
   const gap = { start: ago(60 * 5).toISOString(), end: ago(60 * 2).toISOString() };
-  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'coverage_gap', gaps: [gap] });
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [gap] });
   expect((await workflowHistory(db, 1, 100, NOW))!.gaps).toHaveLength(2); // Pro shows 90 days
 });
 
@@ -120,7 +120,7 @@ test('workflow history: Free shows the last 7 days; counts match the window', as
   for (const days of [1, 3, 6, 8, 30]) await slot(days * 24 * 60, 'fired', 1);
   const h = (await workflowHistory(db, 1, 100, NOW))!;
   expect(h.slots).toHaveLength(3);
-  expect(h.counts).toEqual({ fired: 3 });
+  expect(h.filterCounts).toMatchObject({ all: 3, late: 0 });
 });
 
 test('session: round-trips, rejects tampering and expiry', () => {
@@ -189,7 +189,8 @@ test('workflow history: filters and 24 h health', async () => {
   expect(await states('failed')).toEqual(['accepted']);
   const h = (await workflowHistory(db, 1, 100, NOW, 'late'))!;
   expect(h.health).toBe('missed');
-  expect(h.counts).toEqual({ accepted: 2, fired: 1, expired: 1 }); // counts ignore the filter
+  expect(h.filterCounts).toEqual({ all: 4, late: 1, missed: 1, unconfirmed: 0, failed: 1 }); // counts ignore the filter
+  expect(h.medianDelayMs).toBe(2000); // sent at +1 s, +50 s, +2 s over the same 24 h as the other facts
 });
 
 test('keep it on GitHub: hides only within the installation, and can be undone', async () => {
@@ -345,12 +346,31 @@ test('history pages back with a before cursor, within the plan window', async ()
     [NOW],
   );
   const first = (await workflowHistory(db, 1, 100, NOW))!;
-  expect(first.slots).toHaveLength(500);
-  expect(first.hasOlder).toBe(true);
-  const older = (await workflowHistory(db, 1, 100, NOW, undefined, new Date(first.slots[499].due)))!;
-  expect(older.slots).toHaveLength(100);
-  expect(older.hasOlder).toBe(false);
-  expect(older.slots[0].due).toBe(ago(2505).toISOString()); // no gap, no repeat
+  expect(first.slots).toHaveLength(50);
+  expect(first).toMatchObject({ hasOlder: true, hasNewer: false });
+  const older = (await workflowHistory(db, 1, 100, NOW, undefined, new Date(first.slots[49].due)))!;
+  expect(older.slots).toHaveLength(50);
+  expect(older).toMatchObject({ hasOlder: true, hasNewer: true });
+  expect(older.slots[0].due).toBe(ago(255).toISOString()); // no gap, no repeat
+  // Newer from page 2 is page 1 again, newest first, with nothing newer.
+  const back = (await workflowHistory(db, 1, 100, NOW, undefined, undefined, new Date(older.slots[0].due)))!;
+  expect(back.slots.map((x) => x.due)).toEqual(first.slots.map((x) => x.due));
+  expect(back).toMatchObject({ hasOlder: true, hasNewer: false });
+  // The last page: 600 rows, so page 12 holds the oldest 50 and nothing is older.
+  let page = first;
+  for (let i = 0; i < 11; i++) page = (await workflowHistory(db, 1, 100, NOW, undefined, new Date(page.slots[page.slots.length - 1].due)))!;
+  expect(page.slots).toHaveLength(50);
+  expect(page.hasOlder).toBe(false);
+  expect(page.slots[49].due).toBe(ago(3000).toISOString());
+  // Direction flags come from what exists, not from the cursor: a `before` above the newest run has nothing newer,
+  // and an `after` past the newest run is an empty page that knows nothing is on either side of it.
+  expect(await workflowHistory(db, 1, 100, NOW, undefined, new Date(NOW.getTime() - 1000))).toMatchObject({ hasNewer: false, hasOlder: true, newerEdge: null });
+  const empty = (await workflowHistory(db, 1, 100, NOW, undefined, undefined, new Date(Date.parse(first.slots[0].due) + 1)))!;
+  expect(empty).toMatchObject({ slots: [], hasNewer: false, hasOlder: false });
+  expect(older.newerEdge).toBe(first.slots[49].due); // the run just above page 2
+  // A future `after` has nothing newer; a malformed one is ignored.
+  expect((await workflowHistory(db, 1, 100, NOW, undefined, undefined, new Date(NOW.getTime() + 60_000)))!.slots[0].due).toBe(ago(5).toISOString());
+  expect((await workflowHistory(db, 1, 100, NOW, undefined, undefined, new Date('nonsense')))!.slots[0].due).toBe(ago(5).toISOString());
   const past = (await workflowHistory(db, 1, 100, NOW, undefined, ago(91 * 24 * 60)))!; // before the 90-day window
   expect(past.slots).toEqual([]);
   expect(past.hasOlder).toBe(false);
@@ -382,8 +402,11 @@ test('headline: on time with no live schedules left (marker removed) does not sa
   await db.query('DELETE FROM schedules');
   const t = (await overview(db, 1, NOW)).totals;
   expect(t).toMatchObject({ activeSchedules: 0, verdict: 'on_time' });
-  expect(VERDICT[t.verdict](t.activeSchedules, t.c24)).toBe('No active schedules. Last 24 h: 2 runs on time');
-  expect(VERDICT.on_time(3, t.c24)).toBe('All 3 schedules on time');
+  expect(VERDICT[t.verdict](t.c24)).toBe('No dispatch issues in the last 24 h');
+  expect(VERDICT.behind({ ...t.c24, overdue: 1 })).toBe('1 overdue run');
+  expect(VERDICT.behind({ ...t.c24, overdue: 3 })).toBe('3 overdue runs');
+  expect(VERDICT.missed({ ...t.c24, refused: 1, gaveUp: 0 })).toBe('1 run refused by GitHub');
+  expect(VERDICT.missed({ ...t.c24, refused: 1, gaveUp: 1 })).toBe('2 runs not sent');
 });
 
 test('workflow page: a removed marker reads as not scheduled, a plan-limit pause as limited', async () => {
@@ -395,43 +418,49 @@ test('workflow page: a removed marker reads as not scheduled, a plan-limit pause
   expect((await workflowHistory(db, 1, 100, NOW))!.status).toBe('none');
 });
 
-test('first run: a recorded outage takes the normal overview, with its verdict', async () => {
+test('first run: a recorded outage takes the normal overview, so its notice is on screen', async () => {
   await seed(db);
   await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '0 1 * * *')`); // nothing due in the last 24 h
   expect((await overview(db, 1, NOW)).totals).toMatchObject({ anyDue: false, firstRun: true });
   await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
-  expect((await overview(db, 1, NOW)).totals).toMatchObject({ anyDue: false, firstRun: false, verdict: 'coverage_gap' });
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ anyDue: false, firstRun: false, verdict: 'no_runs' });
   await db.query(`UPDATE workflows SET flags = '[{"message":"x"}]'`);
   expect((await overview(db, 1, NOW)).totals.firstRun).toBe(false);
 });
 
-test('workflow health: an outage in the last 24 h or a needed fix outranks on-time counts, in history and the overview row', async () => {
-  await seed(db);
-  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *')`);
-  await slot(5, 'accepted', 1);
-  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 30), ago(60 * 26)]); // older than 24 h
-  expect((await workflowHistory(db, 1, 100, NOW))!.health).toBe('on_time');
-  expect((await overview(db, 1, NOW)).repos[0].workflows[0].health).toBe('on_time');
-  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
-  expect((await workflowHistory(db, 1, 100, NOW))!.health).toBe('coverage_gap');
-  expect((await overview(db, 1, NOW)).repos[0].workflows[0].health).toBe('coverage_gap');
-  await db.query(`UPDATE workflows SET flags = '[{"message":"x"}]'`);
-  expect((await workflowHistory(db, 1, 100, NOW))!.health).toBe('needs_fix');
-  expect((await overview(db, 1, NOW)).repos[0].workflows[0].health).toBe('needs_fix');
-});
-
-test('workflow health: an outage marks only workflows with a due time inside it', async () => {
+test('workflow health: a needed fix outranks on-time counts; a coverage gap never becomes health anywhere', async () => {
   await seed(db);
   await db.query(`INSERT INTO workflows (id, repo_id, path, name) VALUES (101, 10, '.github/workflows/daily.yml', 'daily')`);
   await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '*/5 * * * *'), (101, '0 3 * * *')`);
-  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]); // 07:00-10:00, no 03:00
+  await slot(5, 'accepted', 1);
+  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 5), ago(60 * 2)]);
   const health = async () => Object.fromEntries((await overview(db, 1, NOW)).repos[0].workflows.map((w) => [w.name, w.health]));
-  expect(await health()).toEqual({ daily: 'no_runs', nightly: 'coverage_gap' });
-  expect((await workflowHistory(db, 1, 101, NOW))!.health).toBe('no_runs');
-  expect((await overview(db, 1, NOW)).totals.verdict).toBe('coverage_gap'); // the account verdict still shows it
-  await db.query(`INSERT INTO coverage_gaps (started_at, ended_at) VALUES ($1, $2)`, [ago(60 * 10), ago(60 * 8)]); // 02:00-04:00
-  expect(await health()).toEqual({ daily: 'coverage_gap', nightly: 'coverage_gap' });
-  expect((await workflowHistory(db, 1, 101, NOW))!.health).toBe('coverage_gap');
+  expect(await health()).toEqual({ daily: 'no_runs', nightly: 'on_time' });
+  expect((await workflowHistory(db, 1, 100, NOW))!).toMatchObject({ health: 'on_time', gaps: [expect.anything()] });
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [expect.anything()] });
+  expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('on_time');
+  await db.query(`UPDATE workflows SET flags = '[{"message":"x"}]' WHERE id = 100`);
+  expect((await workflowHistory(db, 1, 100, NOW))!.health).toBe('needs_fix');
+  expect(await health()).toEqual({ daily: 'no_runs', nightly: 'needs_fix' });
+});
+
+test('needs attention: every exception of the last 24 h, most serious first, before the limit', async () => {
+  await seed(db);
+  await seed(db, { installationId: 2, repoId: 20, workflowId: 200 });
+  for (let m = 1; m <= 40; m++) await slot(m * 5, 'accepted', 1); // 40 quiet successes, newest first
+  await slot(20 * 60, 'fired', 45);                                // late, 20 h ago, behind all of them
+  await slot(23 * 60, 'unknown', 1);
+  await slot(22 * 60, 'accepted', 1, 100, 1, 10, 'failure');
+  await slot(30 * 60, 'expired', null);                            // older than 24 h: out
+  await slot(secAgo(90), 'pending', null);                         // overdue now
+  await slot(secAgo(20), 'pending', null);                         // still sending: not an exception
+  await slot(10, 'rejected', 1, 200, 2, 20);                       // another account's
+  const e = await exceptions(db, 1, NOW);
+  expect(e.items.map((x) => x.reason)).toEqual(['overdue', 'unconfirmed', 'failed', 'late']);
+  expect(e.more).toBe(0);
+  const capped = await exceptions(db, 1, NOW, 2);
+  expect(capped.items.map((x) => x.reason)).toEqual(['overdue', 'unconfirmed']);
+  expect(capped.more).toBe(2);
 });
 
 test('gaps that ended before an installation existed are not its outage', async () => {
@@ -443,8 +472,8 @@ test('gaps that ended before an installation existed are not its outage', async 
   expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [] });
   expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('on_time');
   expect((await workflowHistory(db, 1, 100, NOW))!).toMatchObject({ health: 'on_time', gaps: [] });
-  await db.query('UPDATE installations SET created_at = $1', [ago(60 * 3)]); // existed before it ended
-  expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('coverage_gap');
+  await db.query('UPDATE installations SET created_at = $1', [ago(60 * 3)]); // existed before it ended: shown, still not a verdict
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'on_time', gaps: [expect.anything()] });
 });
 
 test('history cursor: future cursors are ignored; one older than retention, however extreme, is empty without a query', async () => {
@@ -456,4 +485,17 @@ test('history cursor: future cursors are ignored; one older than retention, howe
   expect((await newest(ago(-60))).slots).toHaveLength(1); // future
   const old = await newest(new Date('1000-01-01T00:00:00Z'));
   expect(old).toMatchObject({ slots: [], hasOlder: false });
+});
+
+test('a weekly schedule on its off days is quiet, not "waiting for the first run"', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO schedules (workflow_id, cron) VALUES (100, '0 9 * * 1')`);
+  await slot(3 * 24 * 60, 'accepted', 1); // ran three days ago, nothing due in the last 24 h
+  const t = (await overview(db, 1, NOW)).totals;
+  expect(t).toMatchObject({ verdict: 'quiet', firstRun: false });
+  expect(VERDICT[t.verdict](t.c24)).toBe('Nothing was due in the last 24 h');
+  expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('quiet');
+  await db.query('DELETE FROM slots'); // never ran: the first-run page, and its verdict says so
+  expect((await overview(db, 1, NOW)).totals).toMatchObject({ verdict: 'no_runs', firstRun: true });
+  expect((await accountHealth(db, [1], NOW)).get(1)!.health).toBe('no_runs');
 });
