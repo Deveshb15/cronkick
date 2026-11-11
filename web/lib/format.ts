@@ -1,4 +1,5 @@
 import type { ProbeReport } from '../../src/probe/collector.ts';
+import type { Evidence } from '../../src/schedule-watch.ts';
 import type { Counts24, SlotView, Verdict, WorkflowStatus } from './data.ts';
 import { fmtAge, fmtDuration, plural } from './live.ts';
 
@@ -106,3 +107,15 @@ export function latestRun(slots: Pick<SlotView, 'state' | 'display' | 'conclusio
   return { due: s.due, text: words[s.display] ?? s.display, tone: s.display === 'unknown' ? 'quiet' : 'bad', runUrl: null };
 }
 
+
+/**
+ * What GitHub's own scheduler did for a workflow the user hasn't moved yet, in one line: "GitHub ran it 3 of 23 times
+ * in the last 24 h · median 8 min late". `bad` when it skipped 1 in 10 or more.
+ */
+export function evidenceLine(e: Evidence, now: Date): { text: string; bad: boolean } {
+  if (e.measuring) return { text: 'Measuring how GitHub runs it…', bad: false };
+  const hours = Math.max(1, Math.round((now.getTime() - Date.parse(e.from)) / 3_600_000));
+  const window = e.fullDay ? 'in the last 24 h' : `in the last ${hours} h`;
+  const late = e.p50Sec === null ? '' : ` · median ${e.p50Sec < 60 ? `${Math.round(e.p50Sec)} s` : `${Math.round(e.p50Sec / 60)} min`} late`;
+  return { text: `GitHub ran it ${e.ran} of ${plural(e.due, 'time')} ${window}${late}`, bad: e.due - e.ran >= e.due / 10 };
+}

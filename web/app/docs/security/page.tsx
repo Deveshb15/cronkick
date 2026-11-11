@@ -4,7 +4,7 @@ import { docMeta } from '@/lib/docs';
 export const metadata = docMeta('/docs/security');
 
 // What the grant allows: GitHub's "Permissions required for GitHub Apps" (docs.github.com/en/rest/authentication/permissions-required-for-github-apps).
-// What Cronkick calls: keep in sync with src/github.ts, web/app/callback/route.ts and src/probe/collector.ts.
+// What Cronkick calls: keep in sync with src/github.ts (listScheduledRuns too), web/app/callback/route.ts and src/probe/collector.ts.
 export default function Security() {
   return (
     <Doc href="/docs/security">
@@ -28,15 +28,16 @@ export default function Security() {
       <p>If Cronkick’s app key were stolen, someone could do what the table above allows in the repositories you selected, including starting any deploy or release workflow that has <code>workflow_dispatch:</code>, with its secrets, on any branch or tag. Selecting only the repositories that need schedules keeps that small.</p>
 
       <H2 id="calls">What Cronkick calls</H2>
-      <p>To schedule your workflows, Cronkick makes only these calls, plus GitHub’s installation-token exchange (<code>POST /app/installations/…/access_tokens</code>), which turns the app’s key into the one-hour token:</p>
+      <p>With the access you grant, Cronkick makes only these calls, plus GitHub’s installation-token exchange (<code>POST /app/installations/…/access_tokens</code>), which turns the app’s key into the one-hour token:</p>
       <Terms rows={[
         [<code key="1">GET /app/installations</code>, 'List the accounts the app is installed on (a daily check).'],
         [<code key="2">GET /installation/repositories</code>, 'List the repositories you selected.'],
         [<code key="3">GET /repos/…/actions/workflows</code>, 'List the workflows in a repository.'],
         [<code key="4">GET /repos/…/contents/…</code>, 'Read a workflow file to find markers.'],
         [<code key="5">POST /repos/…/actions/workflows/…/dispatches</code>, 'Start a workflow at its scheduled time.'],
+        [<code key="6">GET /repos/…/actions/workflows/…/runs</code>, 'For a workflow still on GitHub’s own schedule, list the runs GitHub’s scheduler started, to show you how it ran.'],
       ]} />
-      <p>Run results come to Cronkick from GitHub’s <code>push</code> and <code>workflow_run</code> webhooks, not from extra calls.</p>
+      <p>Run results come to Cronkick from GitHub’s <code>push</code> and <code>workflow_run</code> webhooks. The runs list above is read once an hour, and only for workflows still on GitHub’s schedule, to confirm what those webhooks said.</p>
       <p>Two other kinds of call don’t use the app’s access to your repositories:</p>
       <ul>
         <li><strong>Sign-in.</strong> GitHub’s sign-in gives Cronkick a token for you. It calls <code>GET /user</code> and <code>GET /user/installations</code> to see which accounts you can open, then discards the token.</li>

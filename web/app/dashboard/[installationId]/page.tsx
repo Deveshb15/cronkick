@@ -13,10 +13,11 @@ import { AlertHint, Code, GapNotice, StatusKey, Ticks, VERDICT_DOT } from '@/com
 import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
 import { activity, dailyCells, knownZone, exceptions, installationsFor, overview, recentSlots, type DayCell, type SlotView, type WorkflowRow } from '@/lib/data';
-import { manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
+import { evidenceLine, manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
 import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 import { switchPlan } from '@/lib/switch';
 import { PLANS } from '../../../../src/plans.ts';
+import { scheduleEvidence } from '../../../../src/schedule-watch.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,8 +72,8 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const s = await requireInstallation(id, `/dashboard/${id}`);
   const inst = (await installationsFor(db, s.installs)).find((i) => i.id === id)!;
   const now = new Date();
-  const [{ repos, totals }, items, problems] = await Promise.all([
-    overview(db, id, now), activity(db, id, now, 8), exceptions(db, id, now),
+  const [{ repos, totals }, items, problems, evidence] = await Promise.all([
+    overview(db, id, now), activity(db, id, now, 8), exceptions(db, id, now), scheduleEvidence(db, id, now),
   ]);
   const limits = PLANS[inst.plan];
   const all = repos.flatMap((r) => r.workflows);
@@ -83,6 +84,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
     return {
       id: w.id, name: w.name, path: w.path, repo: w.repo, editUrl: `https://github.com/${w.repo}/edit/${branch.get(w.repo)}/${w.path}`,
       cadence: p.crons.map((c) => humanCron(c.cron)).join(' · '), before: p.before, after: p.after, clamped: p.clamped, tooFast: p.tooFast,
+      evidence: evidence.has(w.id) ? evidenceLine(evidence.get(w.id)!, now) : undefined,
     };
   });
   const switchSection = <SwitchSection candidates={candidates} hidden={hidden} plan={inst.plan} floor={limits.floorMinutes} hide={keepOnGitHub.bind(null, id)} />;

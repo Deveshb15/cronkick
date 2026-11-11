@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Deps } from './deps.ts';
 import { linkRun } from './runs.ts';
+import { recordScheduledRun } from './schedule-watch.ts';
 import { pauseRepos, setInstallationState, syncInstallation, syncRepo, upsertInstallation } from './sync.ts';
 
 /** X-Hub-Signature-256 check over the raw body (R1). */
@@ -44,7 +45,9 @@ export async function handleEvent(deps: Deps, event: string, p: any): Promise<vo
       return;
     }
     case 'workflow_run':
-      await linkRun(deps.db, p.workflow_run);
+      // GitHub's own scheduler started it: evidence for a workflow the user hasn't moved yet. Otherwise it's ours.
+      if (p.workflow_run?.event === 'schedule') await recordScheduledRun(deps.db, p.workflow_run, deps.now());
+      else await linkRun(deps.db, p.workflow_run);
       return;
   }
 }

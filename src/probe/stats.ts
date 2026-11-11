@@ -13,8 +13,8 @@ export function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
 }
 
-export function dueTimes(cron: string, from: Date, until: Date): Date[] {
-  const it = CronExpressionParser.parse(cron, { tz: 'UTC', currentDate: new Date(from.getTime() - 1) });
+export function dueTimes(cron: string, from: Date, until: Date, tz = 'UTC'): Date[] {
+  const it = CronExpressionParser.parse(cron, { tz, currentDate: new Date(from.getTime() - 1) });
   const out: Date[] = [];
   for (let d = it.next().toDate(); d <= until; d = it.next().toDate()) out.push(d);
   return out;
@@ -39,6 +39,22 @@ export function assignRuns(cron: string, runs: { id: number; createdAt: Date }[]
     }
   }
   return out;
+}
+
+/**
+ * How late each due time ran: each run (in creation order) takes the latest free due time at or before it, as
+ * `assignRuns` does, but over an explicit list of due times (several crons, any time zone). null: never ran.
+ */
+export function matchRuns(dues: Date[], created: Date[]): (number | null)[] {
+  const d = dues.map((x) => x.getTime()).sort((a, b) => a - b);
+  const delay: (number | null)[] = d.map(() => null);
+  for (const c of created.map((x) => x.getTime()).sort((a, b) => a - b)) {
+    let i = d.length - 1;
+    while (i >= 0 && d[i] > c) i--;
+    for (let n = 0; i >= 0 && n < 24 && delay[i] !== null; n++) i--; // same 24-step reach as assignRuns
+    if (i >= 0 && delay[i] === null) delay[i] = (c - d[i]) / 1000;
+  }
+  return delay;
 }
 
 export type Lateness = { expected: number; ran: number; missingShare: number; p50Sec: number | null; p95Sec: number | null };

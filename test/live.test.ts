@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { latestRun, nextPlan, rowStatus } from '../web/lib/format.ts';
+import { latestRun, nextPlan, rowStatus, evidenceLine } from '../web/lib/format.ts';
 import { countdown, fmtAge, gapAt, gapMarks, plural, tzAbbrev, viewerZone, fmtDelay, fmtDuration, humanCron, newIds } from '../web/lib/live.ts';
 
 test('plain-words cron for common shapes, raw cron otherwise', () => {
@@ -132,3 +132,14 @@ test('latest run: GitHub result apart from dispatch, never claims a run is going
   expect(latestRun([s({ state: 'pending', display: 'pending' })])).toBeNull();
 });
 
+
+test('evidence line: counts, window and median in words; red only when 1 in 10 or more was skipped', () => {
+  const now = new Date('2026-11-10T12:00:00Z');
+  const e = (ran: number, due: number, p50Sec: number | null, fromH = 24, fullDay = true) =>
+    ({ measuring: false as const, ran, due, p50Sec, from: new Date(now.getTime() - fromH * 3_600_000).toISOString(), until: now.toISOString(), fullDay });
+  expect(evidenceLine(e(3, 23, 480), now)).toEqual({ text: 'GitHub ran it 3 of 23 times in the last 24 h · median 8 min late', bad: true });
+  expect(evidenceLine(e(0, 16, null), now)).toEqual({ text: 'GitHub ran it 0 of 16 times in the last 24 h', bad: true });
+  expect(evidenceLine(e(1, 1, 42), now)).toEqual({ text: 'GitHub ran it 1 of 1 time in the last 24 h · median 42 s late', bad: false });
+  expect(evidenceLine(e(19, 20, 90, 6, false), now)).toEqual({ text: 'GitHub ran it 19 of 20 times in the last 6 h · median 2 min late', bad: false });
+  expect(evidenceLine({ measuring: true, since: now.toISOString() }, now)).toEqual({ text: 'Measuring how GitHub runs it…', bad: false });
+});
