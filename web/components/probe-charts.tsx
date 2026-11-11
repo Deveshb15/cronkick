@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { fmtUtc } from '@/lib/format';
 import { fmtDuration, humanCron } from '@/lib/live';
-import { Time } from './live';
+import { GitHubMark } from './icons';
+import { Countdown, Time, useNow } from './live';
 
 const POSITIONS = 96;
 const num = (n: number) => n.toLocaleString('en-US');
@@ -14,7 +15,7 @@ type Stats = { expected: number; ran: number; p50Sec: number | null; p95Sec: num
 export type PairView = {
   cron: string; state: 'compared' | 'collecting' | 'paused'; reason: string | null;
   repo: string | null; isPublic: boolean; hours: number; from: string | null;
-  startAt: string | null; sampleFrom: string | null;
+  startAt: string | null; sampleFrom: string | null; until: string | null;
   github: { file: string; stats: Stats }; cronkick: { file: string; stats: Stats };
   ticks: { due: string; github: number | null; cronkick: number | null }[];
 };
@@ -63,36 +64,75 @@ const plus = (iso: string, ms: number) => new Date(Date.parse(iso) + ms).toISOSt
 const firstAt = (start: string) => plus(start, H + 5 * 60_000);
 const fullAt = (start: string, hours: number) => plus(start, (hours + 1) * H + 5 * 60_000);
 
-/** Where a pair is before it has numbers: the steps from the repo going public to the full comparison. */
-function Timeline({ p, now }: { p: PairView; now: number }) {
-  const steps: [string, string | null][] = [
-    [p.isPublic ? 'Probe repo went public' : 'Sample started', p.sampleFrom],
-    ['Measuring from', p.startAt],
-    ['First numbers', p.startAt && firstAt(p.startAt)],
-    ['Full comparison', p.startAt && fullAt(p.startAt, 6)],
-  ];
+/**
+ * Before a pair has numbers: how far along it is (a bar from the start of measuring to the full comparison, with the
+ * first numbers marked) and the runs so far on both sides, not counted yet. Times are the viewer's.
+ */
+function Waiting({ p }: { p: PairView }) {
+  const now = useNow(30_000);
+  const start = p.startAt!;
+  const first = firstAt(start), full = fullAt(start, 6);
+  const span = Date.parse(full) - Date.parse(start);
+  const done = now === null ? 0 : Math.min(1, Math.max(0, (now - Date.parse(start)) / span));
+  const mark = (Date.parse(first) - Date.parse(start)) / span;
+  // Every due time from the start to the full comparison: the runs so far, then the ones still to come.
+  const step = (p.cron.startsWith('*/5') ? 5 : 60) * 60_000;
+  const slots = Math.min(POSITIONS, Math.ceil(span / step));
+  const lane = (side: 'github' | 'cronkick', who: string) => (
+    <div className="flex h-7 items-stretch gap-px rounded-sm @xl:gap-[3px]">
+      {p.ticks.slice(-slots).map((t) => (
+        <span key={t.due} aria-hidden="true" className={`tip tick ${t[side] === null ? 'tick-skip' : tone(t[side])}`}
+          data-tip={`${fmtUtc(new Date(t.due))} · ${t[side] === null ? `${who} hasn’t run it yet` : `${who} ran it ${late(t[side]!)} late`}`} />
+      ))}
+      {slots > p.ticks.length && <span aria-hidden="true" className="tick-track" style={{ flex: slots - p.ticks.length }} />}
+    </div>
+  );
   return (
-    <div className="rounded-xl bg-white/[0.02] p-4 inset-ring inset-ring-white/5 sm:p-5">
-      <ol role="list" className="grid gap-4 @2xl:grid-cols-4 @2xl:gap-0">
-        {steps.filter(([, at]) => at).map(([label, at], i, all) => {
-          const done = Date.parse(at!) <= now;
-          const current = !done && (i === 0 || Date.parse(all[i - 1][1]!) <= now);
-          return (
-            <li key={label} className="relative flex gap-3 @2xl:flex-col @2xl:gap-2 @2xl:pr-4">
-              {i < all.length - 1 && <span aria-hidden="true" className={`absolute top-3 left-3 hidden h-px w-full @2xl:block ${done ? 'bg-emerald-400/50' : 'bg-white/10'}`} />}
-              <span aria-hidden="true" className={`relative grid size-6 shrink-0 place-items-center rounded-full text-xs ${done ? 'bg-emerald-400/15 text-emerald-300' : current ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/40' : 'bg-white/5 text-zinc-500'}`}>
-                {done ? '✓' : current ? <span className="size-1.5 animate-pulse rounded-full bg-brand-400" /> : i + 1}
-              </span>
-              <span>
-                <span className={`block text-sm/6 font-medium ${done ? 'text-zinc-300' : 'text-white'}`}>{label}</span>
-                <span className="block text-sm/6 text-zinc-400 tabular-nums">{done ? '' : 'about '}<Time iso={at!} date /></span>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-      <p className="mt-4 border-t border-white/5 pt-3 text-[13px]/5 text-pretty text-zinc-400">
-        A scheduled minute only counts once GitHub has had an hour to create its run, so the numbers trail the clock by about an hour. Both sides start together and are counted over the same minutes.
+    <div className="space-y-6 rounded-xl bg-white/[0.02] p-4 inset-ring inset-ring-white/5 sm:p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <p className="flex items-center gap-x-2 text-base/7 font-medium text-white sm:text-sm/6">
+          <span aria-hidden="true" className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-400 opacity-60" /><span className="relative inline-flex size-2 rounded-full bg-brand-400" /></span>
+          Measuring
+        </p>
+        <p className="text-base/7 text-zinc-400 tabular-nums sm:text-sm/6">
+          {now !== null && now < Date.parse(first)
+            ? <>First numbers <Countdown to={first} className="font-medium text-white" /></>
+            : <>Full comparison <Countdown to={full} className="font-medium text-white" /></>}
+        </p>
+      </div>
+
+      <div>
+        <div role="progressbar" aria-label="Measuring progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(done * 100)}
+          className="relative h-2 rounded-full bg-white/5">
+          <div className="h-full rounded-full bg-gradient-to-r from-brand-500/60 to-brand-400 transition-[width] duration-700" style={{ width: `${done * 100}%` }} />
+          <span aria-hidden="true" className="absolute -top-1 h-4 w-px bg-white/40" style={{ left: `${mark * 100}%` }} />
+        </div>
+        <div className="relative mt-2 h-10 text-[13px]/5 text-zinc-400 tabular-nums">
+          <span className="absolute left-0"><span className="block text-zinc-300">Started</span><Time iso={start} /></span>
+          <span className="absolute -translate-x-1/2 text-center max-sm:hidden" style={{ left: `${mark * 100}%` }}><span className="block text-zinc-300">First numbers</span>~<Time iso={first} /></span>
+          <span className="absolute right-0 text-right"><span className="block text-zinc-300">Full comparison</span>~<Time iso={full} date /></span>
+        </div>
+      </div>
+
+      {p.ticks.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm/6 text-zinc-300">Runs so far <span className="text-zinc-400">· not counted yet, hover one</span></p>
+          {SIDES.map(([side, label]) => (
+            <div key={side} className={LANE}>
+              <p className="text-[13px]/5 font-medium text-zinc-200">{label}</p>
+              {lane(side, side === 'github' ? 'GitHub' : 'Cronkick')}
+            </div>
+          ))}
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]/5 text-zinc-400 @xl:pl-[9rem]">
+            <span className="flex items-center gap-x-1.5"><span aria-hidden="true" className="size-2 rounded-sm bg-ontime" />ran within 30 s</span>
+            <span className="flex items-center gap-x-1.5"><span aria-hidden="true" className="size-2 rounded-sm bg-late" />ran later</span>
+            <span className="flex items-center gap-x-1.5"><span aria-hidden="true" className="tick-skip h-3 w-2 rounded-sm ring-1 ring-white/20" />no run yet</span>
+          </p>
+        </div>
+      )}
+
+      <p className="border-t border-white/5 pt-3 text-[13px]/5 text-pretty text-zinc-400">
+        GitHub can create a scheduled run up to an hour late, so a scheduled minute is only counted, as ran or never ran, once that hour has passed. Both sides are counted over the same minutes.
       </p>
     </div>
   );
@@ -137,27 +177,26 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
   if (!pairs.length) return null;
   const p = pairs[Math.min(pick, pairs.length - 1)];
   const runs = (file: string) => `https://github.com/${p.repo}/actions/workflows/${file.split('/').pop()}`;
-  const now = Date.now();
   const link = 'font-medium text-white underline decoration-white/30 underline-offset-2 hover:decoration-white';
   return (
     <div className="@container space-y-8 rounded-2xl bg-white/[0.03] p-5 text-left inset-ring inset-ring-white/10 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base/7 font-semibold text-white">The same workflow, run two ways</h2>
+          {!compact && pairs.length > 1 && (
+            <nav aria-label="Schedule" className="flex gap-1 rounded-lg bg-white/5 p-1 text-sm/6 inset-ring inset-ring-white/5">
+              {pairs.map((s, i) => (
+                <button key={s.cron} type="button" aria-pressed={s === p} onClick={() => setPick(i)}
+                  className={`inline-flex min-h-11 cursor-pointer items-center rounded-md px-3 sm:min-h-8 ${s === p ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>{humanCron(s.cron)}</button>
+              ))}
+            </nav>
+          )}
+        </div>
           <p className="text-sm/6 text-pretty text-zinc-400">
             {humanCron(p.cron)}, once on GitHub’s own <code className="font-mono">schedule:</code> and once triggered by Cronkick, in{' '}
-            {p.isPublic && p.repo ? <a href={`https://github.com/${p.repo}`} className={link}>{p.repo}</a> : 'one repository'}.
+            {p.isPublic && p.repo ? <a target="_blank" rel="noreferrer" href={`https://github.com/${p.repo}`} className={link}>{p.repo}</a> : 'one repository'}.
             {p.github.stats.expected > 0 && ` ${Math.floor(p.hours)}\u00a0h measured.`}
           </p>
-        </div>
-        {!compact && pairs.length > 1 && (
-          <nav aria-label="Schedule" className="flex gap-1 rounded-lg bg-white/5 p-1 text-sm/6">
-            {pairs.map((s, i) => (
-              <button key={s.cron} type="button" aria-pressed={s === p} onClick={() => setPick(i)}
-                className={`inline-flex min-h-11 items-center rounded-md px-3 sm:min-h-8 ${s === p ? 'bg-white/10 font-medium text-white' : 'text-zinc-300 hover:text-white'}`}>{humanCron(s.cron)}</button>
-            ))}
-          </nav>
-        )}
       </div>
 
       {p.state === 'paused' || (!p.startAt && p.reason) ? (
@@ -165,10 +204,10 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
           <span className="font-medium text-white">{p.state === 'paused' ? 'Paused.' : 'Not started.'}</span> {p.reason}.
         </p>
       ) : p.github.stats.expected === 0 && p.startAt ? (
-        <Timeline p={p} now={now} />
+        <Waiting p={p} />
       ) : p.state === 'collecting' && p.startAt ? (
         <p className="rounded-xl bg-brand-500/[0.06] px-4 py-3 text-sm/6 text-zinc-300 inset-ring inset-ring-brand-500/20">
-          <span className="font-medium text-brand-300">Early numbers.</span> {Math.floor(p.hours)}{'\u00a0'}h measured so far; the full comparison is ready around <Time iso={fullAt(p.startAt, 6)} date className="text-white" />.
+          <span className="font-medium text-brand-300">Early numbers.</span> {Math.floor(p.hours)}{'\u00a0'}h measured so far; the full comparison is ready <Countdown to={fullAt(p.startAt, 6)} className="text-white" />.
         </p>
       ) : null}
       {p.state !== 'paused' && p.github.stats.expected > 0 && (
@@ -212,11 +251,17 @@ export function ProbeCharts({ pairs, compact = false }: { pairs: PairView[]; com
       )}
 
       {p.isPublic && p.repo && p.state !== 'paused' && (
-        <p className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/5 pt-4 text-sm/6">
-          <span className="text-zinc-400">Check it yourself on GitHub:</span>
-          <a href={runs(p.github.file)} className={link}>{p.github.file.split('/').pop()} runs ↗</a>
-          <a href={runs(p.cronkick.file)} className={link}>{p.cronkick.file.split('/').pop()} runs ↗</a>
-        </p>
+        <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-5">
+          <span className="text-base/7 text-zinc-400 sm:text-sm/6">Check it yourself:</span>
+          {([[p.github.file, 'GitHub schedule'], [p.cronkick.file, 'Cronkick']] as const).map(([file, who]) => (
+            <a key={file} target="_blank" rel="noreferrer" href={runs(file)}
+              className="inline-flex min-h-11 items-center gap-x-2 rounded-lg bg-white/5 py-2 pr-3 pl-2.5 text-sm/6 text-zinc-200 inset-ring inset-ring-white/10 hover:bg-white/10 hover:text-white sm:min-h-9 sm:py-1.5">
+              <GitHubMark className="size-4 shrink-0" />
+              <span><span className="font-mono">{file.split('/').pop()}</span> <span className="text-zinc-400">· {who}</span></span>
+              <span aria-hidden="true" className="text-zinc-400">↗</span>
+            </a>
+          ))}
+        </div>
       )}
     </div>
   );

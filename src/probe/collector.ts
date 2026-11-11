@@ -255,7 +255,24 @@ export async function probePairs(db: Db, r: ProbeReport, now: Date, n = 96): Pro
       pair.repo ??= repo.repo;
       pair.isPublic = repo.private === false;
       // Numbers start once the first scheduled minute after the start is an hour old: GitHub may create a run that late.
-      if (until <= from || !dueTimes(cron, from, until).length) { pair.reason ??= `Measuring from ${from.toISOString().slice(11, 16)} UTC`; continue; }
+      if (until <= from || !dueTimes(cron, from, until).length) {
+        pair.reason ??= `Measuring from ${from.toISOString().slice(11, 16)} UTC`;
+        // Not counted yet, but shown: the runs so far, up to the last complete check, so the page shows them arriving.
+        if (!pair.ticks.length && repo.lastSuccessAt && repo.lastSuccessAt > from) {
+          const seen = dueTimes(cron, from, repo.lastSuccessAt);
+          const { rows } = await db.query(
+            'SELECT workflow, due_at, started_at FROM probe_runs WHERE repo = $1 AND workflow = ANY($2) AND due_at >= $3',
+            [repo.repo, [gh.file, ck.file], from],
+          );
+          const at = (file: string, d: Date) => {
+            const r = rows.find((x) => x.workflow === file && x.due_at.getTime() === d.getTime());
+            return r ? (r.started_at.getTime() - r.due_at.getTime()) / 1000 : null;
+          };
+          pair.ticks = seen.slice(-n).map((d) => ({ due: d, github: at(gh.file, d), cronkick: at(ck.file, d) }));
+          pair.until = until;
+        }
+        continue;
+      }
       const dues = dueTimes(cron, from, until);
       const { rows } = await db.query(
         'SELECT workflow, due_at, started_at FROM probe_runs WHERE repo = $1 AND workflow = ANY($2) AND due_at >= $3 AND due_at <= $4',

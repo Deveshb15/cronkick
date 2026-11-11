@@ -24,6 +24,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" />
+        {/* During a deploy the two servers briefly run different builds; a page from one can ask the other for a script
+            it doesn't have. Then the page would sit there without JavaScript, so reload it once (at most every 30 s). */}
+        <script dangerouslySetInnerHTML={{ __html: `addEventListener('error',function(e){var t=e.target;if(!t||t.tagName!=='SCRIPT'||(t.src||'').indexOf('/_next/static/')<0)return;try{var k='ck-reload',l=+sessionStorage.getItem(k)||0;if(Date.now()-l<30000)return;sessionStorage.setItem(k,Date.now())}catch(x){}location.reload()},true)` }} />
       </head>
       <body className="font-sans text-white">
         <div className="isolate">{children}</div>

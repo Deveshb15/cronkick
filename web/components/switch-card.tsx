@@ -61,7 +61,7 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
         </div>
         <div className="flex flex-col gap-2">
           <button type="button" onClick={copy} className="min-h-11 rounded-lg bg-brand-500 px-3 py-2 text-sm/6 font-semibold text-ink transition hover:bg-brand-400 sm:min-h-0">{copied ? 'Copied ✓' : 'Copy these lines'}</button>
-          <a href={c.editUrl} className="flex min-h-11 items-center justify-center rounded-lg bg-white/5 px-3 py-2 text-center sm:min-h-0 text-sm/6 inset-ring inset-ring-white/10 transition hover:bg-white/10">Edit file on GitHub ↗</a>
+          <a target="_blank" rel="noreferrer" href={c.editUrl} className="flex min-h-11 items-center justify-center rounded-lg bg-white/5 px-3 py-2 text-center sm:min-h-0 text-sm/6 inset-ring inset-ring-white/10 transition hover:bg-white/10">Edit file on GitHub ↗</a>
           <button type="button" disabled={hiding} onClick={() => startHide(() => hide(c.id, true))} className="min-h-11 text-left text-[13px]/5 text-zinc-400 hover:text-zinc-300 disabled:opacity-50 sm:min-h-0 lg:order-last lg:mt-auto">
             {hiding ? 'Hiding…' : 'Keep it on GitHub · hide from this list'}
           </button>
