@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
-import { CAP_ERROR, collectProbes, probeReport, probeStrips } from '../src/probe/collector.ts';
+import { CAP_ERROR, collectProbes, probePairs, probeReport } from '../src/probe/collector.ts';
 import { probeSample } from '../web/lib/format.ts';
 import { assignRuns, lateness } from '../src/probe/stats.ts';
 import { freshDb } from './helpers.ts';
@@ -36,13 +36,16 @@ describe('collector health and report', () => {
 
   const at = (s: string) => new Date(`2026-11-10T${s}Z`);
   const HOURLY = '.github/workflows/hourly.yml';
-  const run = (id: number, created: string, path = HOURLY) => ({ id, path, created_at: at(created).toISOString(), repository: { private: true } });
+  const run = (id: number, created: string, path = HOURLY, extra: object = {}) => ({ id, path, event: 'schedule', created_at: at(created).toISOString(), repository: { private: true }, ...extra });
   const filler = (n: number, created: string, from = 1000) => Array.from({ length: n }, (_, i) => run(from + i, created, 'other.yml'));
-  /** Pages in order; a number is an HTTP error status. */
-  const github = (pages: (unknown[] | number)[]) => {
+  /** Run-list pages in order; a number is an HTTP error status. `workflows` answers the workflow-list call. */
+  const github = (pages: (unknown[] | number)[], workflows: { path: string; state: string }[] | number = []) => {
     const calls: string[] = [];
     const signals: unknown[] = [];
     const fn = (async (url: string, init?: RequestInit) => {
+      if (url.includes('/actions/workflows')) {
+        return typeof workflows === 'number' ? new Response('', { status: workflows }) : new Response(JSON.stringify({ workflows }));
+      }
       calls.push(url);
       signals.push(init?.signal);
       const p = pages.shift() ?? [];
@@ -79,12 +82,53 @@ describe('collector health and report', () => {
     expect(r.repos[0]).toMatchObject({ from: at('06:00:00'), until: at('09:00:00'), error: 'GitHub returned 502' });
   });
 
-  test('strips: every due time up to the last complete check, with how late GitHub ran it or null', async () => {
-    await collectProbes(db, ['acme/p'], 't', github([[run(2, '08:01:30'), run(1, '06:01:00')]]).fn, at('10:00:00'));
-    const strips = await probeStrips(db, await probeReport(db, ['acme/p'], at('10:00:00')), at('10:00:00'));
-    expect(strips.find((x) => x.cron === '0 * * * *')!.ticks).toEqual([ // until 10:00 - 1 h; 07:00 and 09:00 never ran
-      { due: at('06:00:00'), delaySec: 60 }, { due: at('07:00:00'), delaySec: null }, { due: at('08:00:00'), delaySec: 90 }, { due: at('09:00:00'), delaySec: null },
-    ]);
+  // Pairs: GitHub's hourly probe against its Cronkick twin, inserted directly. Times on Nov 10, last check at `check`.
+  const GH = HOURLY, CK = '.github/workflows/cronkick-hourly.yml';
+  const pairDb = async (check: string, rows: [string, string, string][], states: Record<string, string> = {}, sampleFrom: string | null = null) => {
+    await db.query('INSERT INTO probe_health (repo, private, last_attempt_at, last_success_at, sample_from) VALUES ($1, false, $2, $2, $3)',
+      ['acme/p', at(check), sampleFrom && at(sampleFrom)]);
+    for (const [i, [wf, due, started]] of rows.entries()) {
+      await db.query('INSERT INTO probe_runs (run_id, repo, workflow, cron, due_at, started_at) VALUES ($1, $2, $3, $4, $5, $6)', [i + 1, 'acme/p', wf, '0 * * * *', at(due), at(started)]);
+    }
+    for (const [path, state] of Object.entries(states)) await db.query('INSERT INTO probe_workflows VALUES ($1, $2, $3, $4)', ['acme/p', path, state, at(check)]);
+    const now = at(check);
+    return (await probePairs(db, await probeReport(db, ['acme/p'], now), now)).find((x) => x.cron === '0 * * * *')!;
+  };
+  const hourly = (wf: string, from: number, to: number, lateS: number, skip: number[] = []) =>
+    Array.from({ length: to - from + 1 }, (_, i) => from + i).filter((h) => !skip.includes(h))
+      .map((h): [string, string, string] => [wf, `${String(h).padStart(2, '0')}:00:00`, `${String(h).padStart(2, '0')}:${String(Math.floor(lateS / 60)).padStart(2, '0')}:${String(lateS % 60).padStart(2, '0')}`]);
+
+  test('pairs: both sides are counted over the same window, from the later first run to the last check less an hour', async () => {
+    // GitHub from 02:00 (late, skipping 10:00-12:00), Cronkick twin from 06:00 on time; last check 21:00, so until 20:00.
+    const p = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600, [10, 11, 12]), ...hourly(CK, 6, 20, 1)]);
+    expect(p).toMatchObject({ state: 'compared', from: at('06:00:00'), until: at('20:00:00'), hours: 14, isPublic: true });
+    expect(p.github.stats).toMatchObject({ expected: 15, ran: 12, p50Sec: 600 });
+    expect(p.cronkick.stats).toMatchObject({ expected: 15, ran: 15, p50Sec: 1 });
+    expect(p.ticks).toHaveLength(15);
+    expect(p.ticks[4]).toEqual({ due: at('10:00:00'), github: null, cronkick: 1 }); // the same instants for both strips
+  });
+
+  test('pairs: under 6 h of shared time is collecting, with how long so far', async () => {
+    const short = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600), ...hourly(CK, 16, 20, 1)]);
+    expect(short).toMatchObject({ state: 'collecting', hours: 4 });
+    expect(short.reason).toMatch(/4 h so far/);
+  });
+
+  test('pairs: no twin runs yet is collecting', async () => {
+    const p = await pairDb('21:00:00', hourly(GH, 2, 20, 600));
+    expect(p).toMatchObject({ state: 'collecting', reason: 'The Cronkick twin has no runs yet' });
+  });
+
+  test('pairs: a schedule GitHub turned off is paused, with no numbers', async () => {
+    const p = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600), ...hourly(CK, 2, 20, 1)], { [GH]: 'disabled_inactivity', [CK]: 'active' });
+    expect(p).toMatchObject({ state: 'paused', reason: 'The GitHub schedule: workflow was turned off by GitHub after 60 days without commits, so this pair isn’t counted until it runs again' });
+    expect(p.github.stats.expected).toBe(0);
+  });
+
+  test('pairs: the sample start bounds the window when it is later than both first runs', async () => {
+    const p = await pairDb('21:00:00', [...hourly(GH, 2, 20, 600), ...hourly(CK, 2, 20, 1)], {}, '09:30:00');
+    expect(p).toMatchObject({ state: 'compared', from: at('09:30:00') });
+    expect(p.cronkick.stats.expected).toBe(11); // 10:00 .. 20:00
   });
 
   test('before any complete check, a partial attempt never moves the boundary, so a retry cannot fake completeness', async () => {
@@ -131,6 +175,41 @@ describe('collector health and report', () => {
     expect(r.repos[0]).toMatchObject({ live: true, error: null, lastSuccessAt: new Date('2026-11-10T13:00:00Z') });
     const hourly = r.schedules.find((s) => s.cron === '0 * * * *')!;
     expect(hourly.stats.missingShare).toBe(0); // the disconnected Nov 5 rows are gone, not counted against GitHub
+  });
+
+  const TWIN = '.github/workflows/cronkick-hourly.yml';
+  const dispatched = (id: number, created: string, login = 'cronkick[bot]') =>
+    run(id, created, TWIN, { event: 'workflow_dispatch', triggering_actor: { login, type: login.endsWith('[bot]') ? 'Bot' : 'User' } });
+  const stored = async () => (await db.query('SELECT run_id, workflow FROM probe_runs ORDER BY run_id')).rows;
+
+  test('twins count only runs Cronkick dispatched; GitHub probes only runs its scheduler started', async () => {
+    const page = [dispatched(1, '09:00:02'), dispatched(2, '08:30:00', 'someone'), run(3, '09:01:00'), run(4, '08:02:00', HOURLY, { event: 'workflow_dispatch' })];
+    await collectProbes(db, ['acme/p'], 't', github([page]).fn, at('10:00:00'));
+    expect(await stored()).toEqual([{ run_id: 1, workflow: TWIN }, { run_id: 3, workflow: HOURLY }]);
+  });
+
+  test('a visibility change restarts the sample: earlier runs go, runs created before it are not stored', async () => {
+    await collectProbes(db, ['acme/p'], 't', github([[run(1, '08:01:00')]]).fn, at('09:00:00'));
+    const pub = { repository: { private: false } };
+    // The repo went public: the check at 10:00:30 sees it, drops run 1 and does not store run 2 (created before).
+    await collectProbes(db, ['acme/p'], 't', github([[run(2, '09:01:00', HOURLY, pub)]]).fn, at('10:00:30'));
+    expect(await stored()).toEqual([]);
+    expect((await health())[0]).toMatchObject({ private: false, sample_from: at('10:00:30') });
+    // Runs after the change are measured as usual, and the same visibility doesn't restart again.
+    await collectProbes(db, ['acme/p'], 't', github([[run(3, '11:01:00', HOURLY, pub), run(2, '09:01:00', HOURLY, pub)]]).fn, at('11:30:00'));
+    expect(await stored()).toEqual([{ run_id: 3, workflow: HOURLY }]);
+    expect((await health())[0]).toMatchObject({ sample_from: at('10:00:30') });
+  });
+
+  test('workflow states are recorded; a change clears that workflow\'s runs; a failed read keeps the last state', async () => {
+    await collectProbes(db, ['acme/p'], 't', github([[run(1, '09:01:00')]], [{ path: HOURLY, state: 'active' }]).fn, at('10:00:00'));
+    const states = async () => Object.fromEntries((await db.query('SELECT path, state FROM probe_workflows')).rows.map((r) => [r.path, r.state]));
+    expect(await states()).toMatchObject({ [HOURLY]: 'active', [TWIN]: 'missing' });
+    await collectProbes(db, ['acme/p'], 't', github([[]], [{ path: HOURLY, state: 'disabled_inactivity' }]).fn, at('10:05:00'));
+    expect(await states()).toMatchObject({ [HOURLY]: 'disabled_inactivity' });
+    expect(await stored()).toEqual([]);
+    await collectProbes(db, ['acme/p'], 't', github([[]], 500).fn, at('10:10:00'));
+    expect(await states()).toMatchObject({ [HOURLY]: 'disabled_inactivity' });
   });
 
   test('a repo that never succeeded is in the inventory with zero contribution and its error', async () => {

@@ -1,0 +1,12 @@
+# Probe twin of hourly.yml: the same job and cron, triggered by Cronkick instead of GitHub's scheduler.
+# The lateness page compares the two, both measured from GitHub's run list.
+name: probe hourly (Cronkick)
+on:
+  workflow_dispatch: # cronkick: "0 * * * *"
+permissions: {}
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo "scheduled tick"
