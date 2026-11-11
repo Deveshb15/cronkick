@@ -6,10 +6,10 @@ Wants=network-online.target
 
 [Service]
 User=cronkick
-WorkingDirectory=/opt/cronkick
+WorkingDirectory=/opt/cronkick/current
 EnvironmentFile=/etc/cronkick/env
 # tsx directly (not npm) so SIGTERM reaches the app and in-flight dispatches drain.
-ExecStart=/opt/cronkick/node_modules/.bin/tsx src/main.ts
+ExecStart=/opt/cronkick/current/node_modules/.bin/tsx src/main.ts
 Restart=always
 RestartSec=2
 # The app drains in-flight dispatches on SIGTERM (up to 15 s).
