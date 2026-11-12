@@ -9,7 +9,7 @@ let db: Db;
 beforeEach(async () => { db?.end(); db = await freshDb(); });
 afterAll(() => db.end());
 
-const app = () => webApp(fakeDeps(db, new Date('2026-11-10T12:00:00Z')).deps, { webhookSecret: 'whsec' });
+const app = () => webApp(fakeDeps(db, new Date('2026-11-10T12:00:00Z')).deps, { webhookSecret: 'whsec', billing: { secret: '', products: {} } });
 const body = JSON.stringify({ action: 'created', installation: { id: 1, account: { login: 'a', type: 'User' } } });
 
 test('webhook with a bad signature: 401 and nothing written', async () => {

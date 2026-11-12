@@ -14,6 +14,7 @@ import { ButtonLink, Code, Eyebrow } from '@/components/ui';
 import { db } from '@/lib/db';
 import { installUrl, pairView } from '@/lib/format';
 import { probeRepos } from '../../src/config.ts';
+import { PLANS, type PlanName } from '../../src/plans.ts';
 import { HOME_MIN_HOURS, probePairs, probeReport } from '../../src/probe/collector.ts';
 
 /**
@@ -57,16 +58,20 @@ function Mark({ v }: { v: Cell }) {
   return <span className="flex items-center gap-x-1.5 text-zinc-400"><MinusIcon aria-hidden="true" className="size-4 h-lh shrink-0 fill-late" />{v}</span>;
 }
 
+const every = (m: number) => (m === 1 ? 'Every minute' : `Every ${m} minutes`);
+const tier = (p: (typeof PLANS)[PlanName]) => [`${p.schedules} schedules, any repositories`, `${every(p.floorMinutes)} or slower`, `${p.historyDays} days of history`];
+// Paid plans are bought in Settings, so their buttons go through sign-in (and install, if needed).
 const plans = [
-  { name: 'Free', price: '$0', note: 'For side projects and open source.', items: ['Unlimited repositories', '10 schedules', 'Every 15 minutes or slower', '7 days of history'], href: installUrl(), cta: 'Install free', github: true },
-  { name: 'Pro', price: '$9', note: 'Per GitHub account or organization, or $90 a year. No card checkout yet: email us and we switch your account by hand.', items: ['50 schedules across any repositories', 'Every 5 minutes or slower', 'Email alerts for missed and failed runs', '90 days of history'], href: 'mailto:hi@cronkick.xyz?subject=Cronkick%20Pro', cta: 'Request Pro · manual activation', featured: true },
+  { name: 'Free', price: '$0', note: 'Try it on the jobs that matter most.', items: tier(PLANS.free), href: installUrl(), cta: 'Install free', github: true },
+  { name: 'Pro', price: `$${PLANS.pro.price!.monthly}`, note: `For personal GitHub accounts. Or $${PLANS.pro.price!.yearly} a year.`, items: [...tier(PLANS.pro), 'Email alerts for missed and failed runs'], href: '/dashboard', cta: 'Get Pro', featured: true },
+  { name: 'Team', price: `$${PLANS.team.price!.monthly}`, note: `For GitHub organizations. Or $${PLANS.team.price!.yearly} a year.`, items: [...tier(PLANS.team), 'Email alerts for missed and failed runs'], href: '/dashboard', cta: 'Get Team' },
 ];
 
 const inline = 'font-medium text-white hover:underline';
 const faqs: { q: string; a: ReactNode }[] = [
   { q: 'Does Cronkick run my code?', a: 'No. It sends GitHub the same workflow_dispatch request as the Run workflow button. Your jobs run on your runners, exactly as before.' },
   { q: 'What if GitHub’s API is down?', a: 'If GitHub is throttling or erroring, Cronkick retries until the slot’s deadline, then skips it rather than run it late. If GitHub refuses the request, the run shows as Refused with GitHub’s reason. If Cronkick can’t tell whether GitHub got the request, it doesn’t resend.' },
-  { q: 'What if Cronkick goes down?', a: <>After a restart Cronkick may still send a run if its deadline hasn’t passed; after the deadline it gives up rather than run it late, and the run shows as Gave up with a note saying so. If its scheduler is down for more than 2 hours, the gap shows as an outage window on your dashboard. Pro accounts with an alert address get one outage email, plus a summary of runs Cronkick didn’t send, at most one an hour. There is no automatic fallback to GitHub’s scheduler. <Link href="/docs/migrate#go-back" className={inline}>How to go back →</Link></> },
+  { q: 'What if Cronkick goes down?', a: <>After a restart Cronkick may still send a run if its deadline hasn’t passed; after the deadline it gives up rather than run it late, and the run shows as Gave up with a note saying so. If its scheduler is down for more than 2 hours, the gap shows as an outage window on your dashboard. Pro and Team accounts with an alert address get one outage email, plus a summary of runs Cronkick didn’t send, at most one an hour. There is no automatic fallback to GitHub’s scheduler. <Link href="/docs/migrate#go-back" className={inline}>How to go back →</Link></> },
   { q: 'Why not keep schedule: as a backup?', a: 'GitHub would then run the same workflow a second time, late. Cronkick won’t send a workflow that still has both.' },
   { q: 'Can I use timezones and several schedules?', a: 'Yes. Add tz=Europe/Berlin to a comment and as many # cronkick lines as you need. Schedules due at the same moment fire once.' },
   { q: 'What permissions does it need?', a: <>Actions read and write, Contents read and Metadata read. Cronkick reads workflow files; the permission allows reading any file in the repos you select. Actions write also allows starting any workflow that has workflow_dispatch:, on any branch, and cancelling, re-running and deleting runs; Cronkick only starts the ones you mark. Tokens are issued by GitHub for one hour at a time. <Link href="/docs/security" className={inline}>What Cronkick can access →</Link></> },
@@ -214,7 +219,7 @@ export default async function Home() {
             <SplitHeading eyebrow="Pricing" title="Simple pricing. No overage charges, ever.">
               <p>At your plan’s limit, extra schedules pause, and we email you if you’ve added an alert address in Settings. Nothing is charged for going over.</p>
             </SplitHeading>
-            <div className="mt-14 grid gap-4 md:grid-cols-2">
+            <div className="mt-14 grid gap-4 md:grid-cols-3">
               {plans.map((p) => (
                 <div key={p.name} className={`reveal flex flex-col justify-between rounded-2xl p-8 transition duration-300 hover:-translate-y-1 ${p.featured ? 'border-spin shadow-[0_20px_80px_-30px_rgb(255_176_32/0.35)]' : 'bg-zinc-900/50 inset-ring inset-ring-white/10 hover:inset-ring-white/20'}`}>
                   <div>
@@ -226,7 +231,6 @@ export default async function Home() {
                     </ul>
                   </div>
                   <div className="mt-10">
-                    {/* ponytail: Pro is set by hand until checkout (Polar/Dodo) exists; its CTA emails us. */}
                     <ButtonLink href={p.href} variant={p.featured ? 'primary' : 'secondary'} className={`w-full ${p.featured ? 'btn-glow' : ''}`}>{p.github && <GitHubMark className="size-4" />}{p.cta}</ButtonLink>
                   </div>
                 </div>

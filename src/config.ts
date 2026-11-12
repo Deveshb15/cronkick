@@ -45,6 +45,8 @@ export function loadConfig() {
     mailFrom: process.env.MAIL_FROM ?? 'Cronkick <alerts@cronkick.xyz>',
     probeRepos: probeRepos(),
     probeToken: process.env.PROBE_TOKEN ?? '',
+    // Optional until billing is set up; the Dodo webhook answers 503 without it.
+    dodoWebhookSecret: process.env.DODO_WEBHOOK_SECRET ?? '',
   };
 }
 export type Config = ReturnType<typeof loadConfig>;

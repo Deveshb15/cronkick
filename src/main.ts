@@ -12,6 +12,7 @@ import { reconcileAll } from './sync.ts';
 import { collectProbes } from './probe/collector.ts';
 import { watchSchedules } from './schedule-watch.ts';
 import { webApp } from './web/app.ts';
+import { downgradeLapsed, dodoProducts } from './billing.ts';
 
 // Errors only (no tracing). Without SENTRY_DSN this is off and capture calls do nothing.
 if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, environment: 'production', tracesSampleRate: 0 });
@@ -26,7 +27,7 @@ const db = createDb(cfg.databaseUrl);
 
 const gh = githubApp(cfg);
 const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl };
-const app = webApp(deps, { webhookSecret: cfg.webhookSecret });
+const app = webApp(deps, { webhookSecret: cfg.webhookSecret, billing: { secret: cfg.dodoWebhookSecret, products: dodoProducts() } });
 const server = serve({ fetch: app.fetch, port: cfg.port }, (i) => console.log(`cronkick listening on :${i.port}`));
 
 let stopping = false;
@@ -57,6 +58,8 @@ const loops = [
   // Probes and the daily reconcile call GitHub and can be slow; on their own loop they never hold up planning.
   loop('background', 60_000, async () => {
     const now = new Date();
+    // A cancelled subscription's paid period ended: back to Free (re-reads workflow files, so it lives here).
+    await downgradeLapsed(deps, now);
     if (cfg.probeRepos.length && now.getTime() - lastProbe > 5 * 60_000) {
       lastProbe = now.getTime();
       await collectProbes(db, cfg.probeRepos, cfg.probeToken);

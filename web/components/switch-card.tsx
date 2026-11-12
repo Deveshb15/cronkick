@@ -52,7 +52,7 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
             {c.tooFast && c.clamped && (
               <div className="flex gap-1 rounded-lg bg-white/5 p-0.5 text-[0.6875rem]/5">
                 <button type="button" onClick={() => setUseClamped(true)} className={chip(useClamped)}>Every {floor} min · fits {plan === 'free' ? 'Free' : 'your plan'}</button>
-                <button type="button" onClick={() => setUseClamped(false)} className={chip(!useClamped)}>Keep it · {plan === 'free' ? 'needs Pro' : 'too fast'}</button>
+                <button type="button" onClick={() => setUseClamped(false)} className={chip(!useClamped)}>Keep it · {plan === 'free' ? 'needs a paid plan' : 'too fast'}</button>
               </div>
             )}
           </div>
@@ -68,8 +68,8 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
           {c.tooFast && (
             <p className="mt-1 text-xs/5 text-pretty text-zinc-400">
               {c.clamped
-                ? useClamped ? `GitHub ran this faster than ${plan === 'free' ? 'Free' : 'your plan'} allows, so these lines use every ${floor} min.` : `As written, Cronkick will flag this workflow instead of running it${plan === 'free' ? '. Pro runs every 5 min.' : '.'}`
-                : `This schedule is faster than every ${floor} min. Pick a slower cron${plan === 'free' ? ', or get Pro for every 5 min' : ''}.`}
+                ? useClamped ? `GitHub ran this faster than ${plan === 'free' ? 'Free' : 'your plan'} allows, so these lines use every ${floor} min.` : `As written, Cronkick will flag this workflow instead of running it${plan === 'free' ? '. Pro and Team run more often.' : '.'}`
+                : `This schedule is faster than every ${floor} min. Pick a slower cron${plan === 'free' ? ', or upgrade in Settings' : ''}.`}
             </p>
           )}
         </div>

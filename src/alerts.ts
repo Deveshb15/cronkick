@@ -62,7 +62,7 @@ export async function sendSlotAlerts(deps: Deps): Promise<number> {
             CASE WHEN s.state IN ('unknown', 'rejected', 'expired') THEN s.state ELSE 'run_failed' END AS kind
        FROM slots s JOIN installations i ON i.id = s.installation_id
        JOIN repos r ON r.id = s.repo_id JOIN workflows w ON w.id = s.workflow_id
-      WHERE i.plan = 'pro' AND NOT i.removed AND i.alert_email IS NOT NULL
+      WHERE i.plan <> 'free' AND NOT i.removed AND i.alert_email IS NOT NULL
         AND s.updated_at > $1::timestamptz - interval '1 day'
         AND (s.state IN ('unknown', 'rejected') OR (s.state = 'expired' AND s.attempts > 0) OR s.conclusion IN ('failure', 'timed_out', 'startup_failure'))
         AND NOT EXISTS (SELECT 1 FROM alerts_sent a WHERE a.key =
@@ -97,7 +97,7 @@ export async function sendSlotAlerts(deps: Deps): Promise<number> {
 async function sendUnsentSummaries(deps: Deps): Promise<number> {
   const { rows } = await deps.db.query<{ id: number; installation_id: number; alert_email: string; due_at: Date }>(
     `SELECT s.id, s.installation_id, i.alert_email, s.due_at FROM slots s JOIN installations i ON i.id = s.installation_id
-      WHERE i.plan = 'pro' AND NOT i.removed AND i.alert_email IS NOT NULL
+      WHERE i.plan <> 'free' AND NOT i.removed AND i.alert_email IS NOT NULL
         AND s.updated_at > $1::timestamptz - interval '1 day' AND s.state = 'expired' AND s.attempts = 0
         AND NOT EXISTS (SELECT 1 FROM alerts_sent a WHERE a.key = 'expired:' || s.id)
       ORDER BY s.due_at LIMIT 5000`,
@@ -157,7 +157,7 @@ export async function sendGapAlerts(deps: Deps): Promise<number> {
     `SELECT g.id AS gap_id, i.id AS installation_id, i.alert_email, g.started_at, g.ended_at
        FROM coverage_gaps g CROSS JOIN installations i
       WHERE g.detected_at > $1::timestamptz - interval '1 day'
-        AND i.plan = 'pro' AND NOT i.removed AND NOT i.suspended AND i.alert_email IS NOT NULL AND i.created_at < g.ended_at
+        AND i.plan <> 'free' AND NOT i.removed AND NOT i.suspended AND i.alert_email IS NOT NULL AND i.created_at < g.ended_at
         AND EXISTS (SELECT 1 FROM schedules s JOIN workflows w ON w.id = s.workflow_id JOIN repos r ON r.id = w.repo_id
                      WHERE r.installation_id = i.id AND r.active AND w.present AND w.flags = '[]' AND s.status = 'active')
         AND NOT EXISTS (SELECT 1 FROM alerts_sent a WHERE a.key = 'gap:' || g.id || ':' || i.id)

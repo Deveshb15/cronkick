@@ -1,10 +1,11 @@
 import * as Sentry from '@sentry/node';
 import { Hono } from 'hono';
 import type { Deps } from '../deps.ts';
+import { handleDodoWebhook, type BillingConfig } from '../billing.ts';
 import { handleEvent, verifySignature } from '../webhooks.ts';
 
 /** The worker's HTTP surface: GitHub webhooks and the health check. Pages live in the Next app (web/). */
-export function webApp(deps: Deps, opts: { webhookSecret: string }) {
+export function webApp(deps: Deps, opts: { webhookSecret: string; billing: BillingConfig }) {
   const app = new Hono();
 
   // Liveness for the load balancer: this server and the database answer. Keep it cheap and unconditional.
@@ -37,6 +38,19 @@ export function webApp(deps: Deps, opts: { webhookSecret: string }) {
       return c.text('error', 500);
     }
     return c.text('ok');
+  });
+
+  // Dodo Payments: subscription changes set the plan (src/billing.ts).
+  app.post('/webhooks/dodo', async (c) => {
+    const body = await c.req.text();
+    try {
+      const r = await handleDodoWebhook(deps, opts.billing, c.req.header(), body);
+      return c.text(r.text, r.status as 200);
+    } catch (e) {
+      console.error('dodo webhook failed', e);
+      Sentry.captureException(e, { tags: { webhook: 'dodo' } });
+      return c.text('error', 500);
+    }
   });
 
   return app;

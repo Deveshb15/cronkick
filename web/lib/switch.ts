@@ -11,7 +11,7 @@ const tooFastFor = (cs: Cron[], floor: number) => minIntervalMinutes(cs.map((c) 
  * Moving a workflow from GitHub's `schedule:` to Cronkick, as the `on:` block before and after.
  * `suggested` is the stored `workflows.suggested_diff` (one `# cronkick:` line per schedule cron).
  * When the schedule is faster than the plan allows, `clamped` offers the plan-floor version, but only for plain
- * `*\/N * * * *` crons; anything else is left for the user to decide (keep it on Pro, or pick a slower cron).
+ * `*\/N * * * *` crons; anything else is left for the user to decide (keep it on a paid plan, or pick a slower cron).
  */
 export function switchPlan(suggested: string, floorMinutes: number) {
   const crons: Cron[] = suggested.split('\n').map((l) => LINE.exec(l.trim())).filter((m) => !!m).map((m) => ({ cron: m![1], tz: m![2] }));

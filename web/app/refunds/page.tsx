@@ -9,11 +9,11 @@ export default function Refunds() {
       <SiteHeader />
       <main className="px-4 pt-12 pb-24 sm:px-6 lg:px-8"><div className="mx-auto max-w-6xl"><Prose>
         <h1>Refund policy</h1>
-        <p>Last updated 2026-11-11. There is no card checkout yet: Pro is requested by email and activated by hand.</p>
+        <p>Last updated 2026-11-13. This covers Pro and Team, paid through Dodo Payments.</p>
         <h2>The short version</h2>
         <ul>
           <li><strong>Any charge, refunded in full within 14 days</strong>, monthly or yearly. No questions asked.</li>
-          <li>After 14 days a charge isn’t refundable, but you can cancel at any time and keep Pro until the end of the period you paid for.</li>
+          <li>After 14 days a charge isn’t refundable, but you can cancel at any time from Manage billing in Settings and keep your plan until the end of the period you paid for.</li>
           <li>If Cronkick has an outage that is our fault and you lose scheduled runs because of it, email us and we’ll credit or refund that month.</li>
         </ul>
         <h2>How to ask</h2>

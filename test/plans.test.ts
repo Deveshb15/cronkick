@@ -27,11 +27,11 @@ async function installWith(repos: Record<string, string[]>, plan: 'free' | 'pro'
   return f;
 }
 
-const TWELVE = Array.from({ length: 12 }, (_, h) => `0 ${h} * * *`); // an hour apart
+const FIVE = Array.from({ length: 5 }, (_, h) => `0 ${h} * * *`); // an hour apart
 
-test('Free: 12 schedules -> 10 active, 2 paused, one email', async () => {
-  const f = await installWith({ 'acme/app': TWELVE }, 'free');
-  expect(await statuses()).toEqual([{ status: 'active', n: 10 }, { status: 'paused_limit', n: 2 }]);
+test('Free: 5 schedules -> 3 active, 2 paused, one email', async () => {
+  const f = await installWith({ 'acme/app': FIVE }, 'free');
+  expect(await statuses()).toEqual([{ status: 'active', n: 3 }, { status: 'paused_limit', n: 2 }]);
   expect(f.sent).toHaveLength(1);
   expect(f.sent[0].subject).toMatch(/2 schedules paused/);
   await afterChange(f.deps, 1); // re-sync: no second email
@@ -39,10 +39,10 @@ test('Free: 12 schedules -> 10 active, 2 paused, one email', async () => {
 });
 
 test('upgrade to Pro activates everything', async () => {
-  const f = await installWith({ 'acme/app': TWELVE }, 'free');
+  const f = await installWith({ 'acme/app': FIVE }, 'free');
   await db.query(`UPDATE installations SET plan = 'pro'`);
   await afterChange(f.deps, 1);
-  expect(await statuses()).toEqual([{ status: 'active', n: 12 }]);
+  expect(await statuses()).toEqual([{ status: 'active', n: 5 }]);
 });
 
 test('Free: any number of repos, within the schedule limit', async () => {
@@ -149,7 +149,7 @@ test('alerts: two servers at once send each alert exactly once', async () => {
 });
 
 test('limit sweep: a suspended installation gets no limit email', async () => {
-  const f = await installWith({ 'acme/app': TWELVE }, 'free');
+  const f = await installWith({ 'acme/app': FIVE }, 'free');
   await db.query(`UPDATE installations SET limit_email_sent_at = NULL, suspended = true`);
   f.sent.length = 0;
   await sendLimitNotices(f.deps);
@@ -157,7 +157,7 @@ test('limit sweep: a suspended installation gets no limit email', async () => {
 });
 
 test('limit sweep: emails once an alert address exists, once, and again after unpausing', async () => {
-  const f = await installWith({ 'acme/app': TWELVE }, 'free');
+  const f = await installWith({ 'acme/app': FIVE }, 'free');
   await db.query(`UPDATE installations SET alert_email = NULL, limit_email_sent_at = NULL`);
   f.sent.length = 0;
   await sendLimitNotices(f.deps);
@@ -172,4 +172,22 @@ test('limit sweep: emails once an alert address exists, once, and again after un
   expect((await db.query('SELECT limit_email_sent_at FROM installations')).rows[0].limit_email_sent_at).toBeNull();
   await sendLimitNotices(f.deps);
   expect(f.sent).toHaveLength(1);
+});
+
+test('history is kept per plan: Team 400 days, Pro 90', async () => {
+  const { settle } = await import('../src/maintenance.ts');
+  const now = new Date('2026-11-10T00:00:00Z');
+  for (const [id, plan] of [[1, 'pro'], [2, 'team']] as const) {
+    await seed(db, { plan, installationId: id, repoId: id * 10, workflowId: id * 100 });
+    for (const days of [30, 200, 500]) {
+      const due = new Date(now.getTime() - days * 86_400_000);
+      await db.query(
+        `INSERT INTO slots (installation_id, repo_id, workflow_id, due_at, fire_at, deadline_at, next_attempt_at, state) VALUES ($1, $2, $3, $4, $4, $4, $4, 'accepted')`,
+        [id, id * 10, id * 100, due],
+      );
+    }
+  }
+  await settle(db, now);
+  const { rows } = await db.query(`SELECT installation_id AS id, count(*)::int AS n FROM slots GROUP BY 1 ORDER BY 1`);
+  expect(rows).toEqual([{ id: 1, n: 1 }, { id: 2, n: 2 }]);
 });

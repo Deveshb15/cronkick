@@ -14,6 +14,7 @@ import { db } from '@/lib/db';
 import { dailyCells, dayBounds, knownZone, retainedFrom, MAX_ROWS, nextRuns, RANGES, rangesFor, rangeStats, recentSlots, workflowHistory, type Flag, type HistoryFilter, type Range, type Schedule } from '@/lib/data';
 import { nextPlan } from '@/lib/format';
 import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
+import { PLANS } from '../../../../../../src/plans.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,7 +76,7 @@ export default async function WorkflowPage({ params, searchParams }: {
   const strip = strips.get(wid) ?? [];
   const observed = h.filterCounts.all > 0 || !!day;
   const words = schedules.map((s) => `${humanCron(s.cron)} · ${s.tz}`).join(' and ') || 'No schedule';
-  const window = h.limits.historyRows ? `last ${h.limits.historyRows} runs` : `last ${h.limits.historyDays} days`;
+  const window = `last ${h.limits.historyDays} days`;
   const status = flags.length ? { dot: 'bg-red-500', word: 'Needs a fix' } : h.status === 'limited' ? { dot: 'bg-zinc-500', word: 'Paused' }
     : !active ? { dot: 'bg-zinc-600', word: 'Not scheduled' } : { dot: VERDICT_DOT[h.health], word: VERDICT_WORD[h.health][0].toUpperCase() + VERDICT_WORD[h.health].slice(1) };
   const link = (o: Record<string, string | undefined>) => {
@@ -207,7 +208,7 @@ export default async function WorkflowPage({ params, searchParams }: {
             <div>
               <h2 id="history" className="text-base/6 font-semibold">History</h2>
               <p className="text-[13px]/5 text-zinc-400">
-                {day ? <>Only {new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })} ({tzAbbrev(tz, now)}) · <Link href={link({ day: undefined })} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Show all days</Link></> : <>The {window} on {h.plan === 'pro' ? 'Pro' : 'Free'}</>}
+                {day ? <>Only {new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })} ({tzAbbrev(tz, now)}) · <Link href={link({ day: undefined })} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Show all days</Link></> : <>The {window} on {PLANS[h.plan].label}</>}
                 {' '}· {MAX_ROWS} per page · times in <Zone />
               </p>
             </div>

@@ -40,7 +40,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
                 <span className="text-zinc-400">How often?</span>
                 <div className="flex flex-wrap gap-1 rounded-lg bg-white/5 p-0.5">
                   {presets.map((p) => <button key={p.cron} type="button" onClick={() => setCron(p.cron)} className={`rounded-md px-2.5 py-1 transition ${cron === p.cron ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:text-white'}`}>{p.label}</button>)}
-                  {floor > 5 && <span title="Pro runs every 5 min" className="rounded-md px-2.5 py-1 text-zinc-600">Every 5 min · Pro</span>}
+                  {floor > 5 && <span title="Paid plans run more often" className="rounded-md px-2.5 py-1 text-zinc-600">Faster · Pro and Team</span>}
                 </div>
               </div>
               <div className="mt-3 overflow-hidden rounded-xl bg-zinc-950 inset-ring inset-ring-white/10">

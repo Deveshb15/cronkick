@@ -9,7 +9,7 @@ import { requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
 import { accountHealth, installationsFor } from '@/lib/data';
 import { installUrl } from '@/lib/format';
-import { PLANS } from '../../../../src/plans.ts';
+import { isPaid, paidPlanFor, PLANS } from '../../../../src/plans.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +24,7 @@ export default async function Shell({ children, params }: { children: ReactNode;
   const current = accounts.find((a) => a.id === id)!;
   const limits = PLANS[inst.plan];
   const nav = (
-    <DashNav id={id} login={s.login} plan={inst.plan} used={current.schedules} limit={limits.schedules} floorMinutes={limits.floorMinutes}
+    <DashNav id={id} login={s.login} plan={inst.plan} offer={isPaid(inst.plan) ? null : paidPlanFor(inst.account_type)} used={current.schedules} limit={limits.schedules} floorMinutes={limits.floorMinutes}
       switcher={<AccountSwitcher current={current} accounts={accounts} installUrl={installUrl()} />} />
   );
   return (

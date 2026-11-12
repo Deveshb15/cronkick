@@ -16,7 +16,7 @@ export const DOCS = [
     { href: '/docs/statuses', title: 'Statuses', description: 'What each status on your dashboard means.' },
   ] },
   { group: 'Account', items: [
-    { href: '/docs/plans', title: 'Plans and limits', description: 'What Free and Pro include, and what happens when you go over a limit.' },
+    { href: '/docs/plans', title: 'Plans and limits', description: 'What Free, Pro and Team include, how billing works, and what happens when you go over a limit.' },
     { href: '/docs/security', title: 'Permissions and security', description: 'What the GitHub App’s permissions allow, which calls Cronkick makes, what it stores, and how to stop it.' },
   ] },
 ];

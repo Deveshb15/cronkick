@@ -10,6 +10,7 @@ import { accountHealth, installationsFor } from '@/lib/data';
 import { installUrl } from '@/lib/format';
 import { plural } from '@/lib/live';
 import { getSession } from '@/lib/session';
+import { PLANS, type PlanName } from '../../../src/plans.ts';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Accounts' };
@@ -45,7 +46,7 @@ export default async function Dashboard() {
                         <span className="block truncate text-sm/6 font-medium">{i.account_login}</span>
                         <span className="flex items-center gap-x-1.5 text-xs/5 text-zinc-400"><span className={`size-1.5 rounded-full ${VERDICT_DOT[h.health]}`} />{i.account_type === 'Organization' ? 'Organization' : 'Personal'} · {plural(h.schedules, 'schedule')} · {VERDICT_WORD[h.health]}</span>
                       </span>
-                      <span className="text-xs/5 text-zinc-400">{i.plan === 'pro' ? 'Pro' : 'Free'}</span>
+                      <span className="text-xs/5 text-zinc-400">{PLANS[i.plan as PlanName].label}</span>
                     </Link>
                   </li>
                 );
