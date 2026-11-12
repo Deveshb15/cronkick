@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { PLANS, type PlanName } from '../../src/plans.ts';
+import { isPaid, PLANS, type PlanName } from '../../src/plans.ts';
 import { nextDue } from '../../src/slots.ts';
 
 /** Colour of one slot in the dashboard strips. */
@@ -46,10 +46,10 @@ const slotView = (r: any, now: Date): SlotView => {
   };
 };
 
-/** The oldest due time a plan may show: Free 7 days, Pro 90 (history is pruned at 91). */
+/** The oldest due time a plan may show: Free 7 days, Pro 90, Team 400. */
 export async function retainedFrom(db: pg.Pool, installationId: number, now: Date): Promise<Date> {
   const plan = ((await db.query('SELECT plan FROM installations WHERE id = $1', [installationId])).rows[0]?.plan ?? 'free') as PlanName;
-  return new Date(now.getTime() - (PLANS[plan].historyDays ?? 91) * DAY_MS);
+  return new Date(now.getTime() - PLANS[plan].historyDays * DAY_MS);
 }
 
 /**
@@ -86,6 +86,16 @@ export function workflowStatus(w: { schedules: Schedule[]; flags: Flag[]; sugges
 }
 
 export type Installation = { id: number; account_login: string; account_type: string; plan: PlanName; alert_email: string | null };
+
+export type Billing = { plan: PlanName; account_type: string; customer: string | null; status: string | null; paidThrough: Date | null };
+/** The Dodo side of an installation, for Settings. */
+export async function billingOf(db: pg.Pool, id: number): Promise<Billing> {
+  const { rows: [r] } = await db.query(
+    `SELECT plan, account_type, dodo_customer_id AS customer, subscription_status AS status, paid_through AS "paidThrough" FROM installations WHERE id = $1`, [id]);
+  return r;
+}
+/** May this account start a new checkout? Not while a subscription is live (that is "Manage billing"), nor when comped. */
+export const canBuy = (b: Billing) => b.plan === 'free' && !['active', 'past_due', 'on_hold', 'paused'].includes(b.status ?? '');
 
 export async function installationsFor(db: pg.Pool, ids: number[]): Promise<Installation[]> {
   const { rows } = await db.query('SELECT id, account_login, account_type, plan, alert_email FROM installations WHERE id = ANY($1) AND NOT removed ORDER BY account_login', [ids]);
@@ -418,12 +428,9 @@ export async function workflowHistory(db: pg.Pool, installationId: number, workf
   // One calendar day, when asked (`bounds` from dayBounds: Dates, so the ISO text is safe to inline). It narrows the
   // rows, the filter counts and the paging edges alike, so an empty day is an empty page, never older runs.
   const oneDay = bounds ? ` AND due_at >= '${bounds.from.toISOString()}'::timestamptz AND due_at < '${bounds.until.toISOString()}'::timestamptz` : '';
-  const window = (limits.historyRows
-    ? `id IN (SELECT id FROM slots WHERE workflow_id = $1 AND due_at <= $2 ORDER BY due_at DESC LIMIT ${limits.historyRows})`
-    : `workflow_id = $1 AND due_at <= $2 AND due_at > $2::timestamptz - interval '${limits.historyDays} days'`) + oneDay;
+  const window = `workflow_id = $1 AND due_at <= $2 AND due_at > $2::timestamptz - interval '${limits.historyDays} days'` + oneDay;
   const where = filter && FILTERS[filter] ? `${window} AND ${FILTERS[filter]}` : window;
-  // The shown range; history is pruned at 91 days, so that bounds a plan without a day limit.
-  const oldest = new Date(now.getTime() - (limits.historyDays ?? 91) * DAY_MS);
+  const oldest = new Date(now.getTime() - limits.historyDays * DAY_MS);
   // A cursor that is malformed or in the future is ignored; one at or before the oldest shown row has nothing older,
   // so it is answered without a query (which also keeps dates Postgres can't bind out of it).
   const t = before?.getTime() ?? NaN;
@@ -487,8 +494,8 @@ export async function dayBounds(db: pg.Pool, day: string | undefined, tz: string
 
 export const RANGES = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 } as const;
 export type Range = keyof typeof RANGES;
-/** The ranges a plan can look at: Free sees its 7 days, Pro up to 90. */
-export const rangesFor = (plan: PlanName): Range[] => (plan === 'pro' ? ['24h', '7d', '30d', '90d'] : ['24h', '7d']);
+/** The ranges a plan can look at: Free sees its 7 days, paid plans up to 90 (older Team days via the per-day view). */
+export const rangesFor = (plan: PlanName): Range[] => (isPaid(plan) ? ['24h', '7d', '30d', '90d'] : ['24h', '7d']);
 
 /**
  * One workflow over (from, now]: dispatch counts, the send delay of what GitHub accepted (p50, p95 and how many), and

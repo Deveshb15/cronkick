@@ -1,4 +1,5 @@
 import { tx, type Db } from './db.ts';
+import { retainDaysJson } from './plans.ts';
 import { planSlots } from './slots.ts';
 
 export const HORIZON_MS = 2 * 60 * 60_000;
@@ -93,8 +94,13 @@ export async function refreshSlots(db: Db, installationId: number, now: Date): P
 
 /** Prune old history. Pending past the deadline -> expired. Lease lost mid-call -> unknown (never fire it again, R8). */
 export async function settle(db: Db, now: Date): Promise<void> {
-  // Pro shows 90 days of history; keep one extra day.
-  await db.query(`DELETE FROM slots WHERE due_at < $1::timestamptz - interval '91 days'`, [now]);
+  // Each plan keeps a day more than it shows (Team 401, the rest 91). The flat 91-day bound keeps the index range scan.
+  await db.query(
+    `DELETE FROM slots s USING installations i
+      WHERE s.installation_id = i.id AND s.due_at < $1::timestamptz - interval '91 days'
+        AND s.due_at < $1::timestamptz - make_interval(days => ($2::jsonb ->> i.plan)::int)`,
+    [now, retainDaysJson()],
+  );
   // Never tried (Cronkick was down or behind): say so, rather than let it read as GitHub's failure.
   await db.query(
     `UPDATE slots SET state = 'expired', updated_at = $1,

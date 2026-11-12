@@ -22,7 +22,7 @@ export default function Timing() {
       <H2 id="unclear">When the outcome is unclear</H2>
       <p>If a request’s outcome is unclear, for example a timeout after GitHub may already have received it, Cronkick does not send it again. The slot shows <strong>Unconfirmed</strong>.</p>
       <Callout title="Why not just retry?">
-        <p>A deploy or a billing job running twice is usually worse than one run missing. You’ll see it on the dashboard, and Pro emails you if you’ve added an alert address.</p>
+        <p>A deploy or a billing job running twice is usually worse than one run missing. You’ll see it on the dashboard, and Pro and Team email you if you’ve added an alert address.</p>
       </Callout>
 
       <H2 id="cronkick-down">When Cronkick is down</H2>
@@ -30,7 +30,7 @@ export default function Timing() {
       <ul>
         <li>After a restart Cronkick may still send a run if its deadline hasn’t passed, so it may show as late. After the deadline it gives up rather than run it late, and the run shows as <strong>Gave up</strong>, with the note “Cronkick didn’t send it before its deadline”.</li>
         <li>If planning stopped for more than 2 hours, the outage is recorded as one window, from the last planning pass to when planning resumed. Runs due then may not have been sent; any that were sent are listed in the history. The window shows as a banner on your dashboard and workflow history, and neither the overview nor the workflow page shows an on-time verdict while the window is in the last 24 hours.</li>
-        <li>Pro accounts with an alert address get one email per outage window, plus a summary of the runs Cronkick didn’t send, at most one an hour, not an email per run.</li>
+        <li>Pro and Team accounts with an alert address get one email per outage window, plus a summary of the runs Cronkick didn’t send, at most one an hour, not an email per run.</li>
       </ul>
       <p>There is no automatic fallback to GitHub’s scheduler. To move a workflow back, see <a href="/docs/migrate#go-back">Go back to GitHub’s scheduler</a>.</p>
       <Callout title="Limits">

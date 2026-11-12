@@ -21,6 +21,7 @@ const config: NextConfig = {
   async rewrites() {
     return [
       { source: '/webhooks', destination: `${worker}/webhooks` },
+      { source: '/webhooks/dodo', destination: `${worker}/webhooks/dodo` },
       { source: '/healthz', destination: `${worker}/healthz` },
       { source: '/healthz/dispatch', destination: `${worker}/healthz/dispatch` },
     ];

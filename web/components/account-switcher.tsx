@@ -5,8 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { Verdict } from '@/lib/data';
 import { plural } from '@/lib/live';
 import { VERDICT_DOT, VERDICT_WORD } from './ui';
+import { PLANS, type PlanName } from '../../src/plans.ts';
 
-export type Account = { id: number; login: string; plan: string; schedules: number; health: Verdict };
+export type Account = { id: number; login: string; plan: PlanName; schedules: number; health: Verdict };
 const avatar = (login: string) => `https://github.com/${login}.png?size=48`;
 
 /**
@@ -34,7 +35,7 @@ export function AccountSwitcher({ current, accounts, installUrl }: { current: Ac
         className="flex min-h-11 w-full items-center gap-x-2.5 rounded-lg bg-white/5 px-2.5 py-2 text-left lg:min-h-0 inset-ring inset-ring-white/10 transition hover:bg-white/10">
         <img src={avatar(current.login)} alt="" className="size-6 shrink-0 rounded-md outline-1 -outline-offset-1 outline-white/10" />
         <span className="min-w-0 flex-1 truncate text-sm/6 font-medium">{current.login}</span>
-        <span className="rounded-sm bg-white/10 px-1.5 text-xs/5 text-zinc-300">{current.plan === 'pro' ? 'Pro' : 'Free'}</span>
+        <span className="rounded-sm bg-white/10 px-1.5 text-xs/5 text-zinc-300">{PLANS[current.plan].label}</span>
         <ChevronUpDownIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500" />
       </button>
       {open && (
@@ -47,7 +48,7 @@ export function AccountSwitcher({ current, accounts, installUrl }: { current: Ac
                 <span className="block truncate font-medium">{a.login}</span>
                 <span className="flex items-center gap-x-1.5 text-xs/4 text-zinc-400"><span className={`size-1.5 rounded-full ${VERDICT_DOT[a.health]}`} />{plural(a.schedules, 'schedule')} · {VERDICT_WORD[a.health]}</span>
               </span>
-              <span className="text-xs/5 text-zinc-400">{a.plan === 'pro' ? 'Pro' : 'Free'}</span>
+              <span className="text-xs/5 text-zinc-400">{PLANS[a.plan].label}</span>
             </Link>
           ))}
           <a href={installUrl} className="mt-1 flex min-h-11 items-center gap-x-2 border-t border-white/5 px-2.5 pt-2 pb-1 text-xs/5 text-zinc-400 hover:text-white lg:min-h-0">

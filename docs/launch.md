@@ -24,7 +24,7 @@ How it works:
 - The dashboard updates live (Postgres LISTEN/NOTIFY, then server-sent events). For each planned run it shows when it was due, when Cronkick sent it, when GitHub started the run, and the job result.
 - There's a public page with what we've measured of GitHub's own scheduler, sample sizes included: https://cronkick.xyz/lateness
 
-Free: unlimited repos, 10 schedules, every 15 min or slower. Pro is $9/month for 5-minute schedules and email alerts; for now you request it by email and I switch it on by hand.
+Free: unlimited repos, 3 schedules, every 15 min or slower. Pro is $5/month for personal accounts (50 schedules, every 5 min, email alerts); Team is $19/month for organizations (200 schedules, every minute).
 
 I'd love feedback, especially from anyone who has worked around this with an external cron server or Lambda.
 
@@ -48,6 +48,6 @@ Push. At 09:00 Cronkick sends the trigger; the target is within 30 seconds.
 
 5/ It checks your workflow before turning it on: leftover `schedule:` (double runs), `github.event.schedule` (empty when dispatched), required inputs.
 
-6/ The free plan is generous: unlimited repos, 10 schedules, every 15 min. Pro is $9/mo.
+6/ Free covers 3 schedules on unlimited repos. Pro is $5/mo for personal accounts, Team $19/mo for orgs (every-minute schedules).
 
 → https://cronkick.xyz

@@ -16,7 +16,7 @@ import { activity, dailyCells, knownZone, exceptions, installationsFor, overview
 import { evidenceLine, manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
 import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 import { switchPlan } from '@/lib/switch';
-import { PLANS } from '../../../../src/plans.ts';
+import { isPaid, PLANS } from '../../../../src/plans.ts';
 import { scheduleEvidence } from '../../../../src/schedule-watch.ts';
 
 export const dynamic = 'force-dynamic';
@@ -109,7 +109,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const carded = mode === 'rows' ? [] : shownWfs.filter((w) => w.status === 'active');
   const [slots, days] = await Promise.all([
     recentSlots(db, id, now, mode === 'spotlight' ? 96 : STRIP),
-    carded.length ? dailyCells(db, id, carded.map((w) => w.id), now, tz, inst.plan === 'pro' ? 30 : 7) : new Map<number, DayCell[]>(),
+    carded.length ? dailyCells(db, id, carded.map((w) => w.id), now, tz, isPaid(inst.plan) ? 30 : 7) : new Map<number, DayCell[]>(),
   ]);
   const mine = shownWfs
     .map((w) => ({ w, st: rowStatus(w.status, slots.get(w.id) ?? [], now) }))

@@ -1,5 +1,5 @@
-// Billing stub: set an installation's plan by hand until Polar/Dodo is wired up.
-// Usage: npm run plan:set -- <installation id | account login> <free|pro>
+// Set an installation's plan by hand (comps, support). Paid plans normally come from the Dodo webhook (src/billing.ts).
+// Usage: npm run plan:set -- <installation id | account login> <free|pro|team>
 // Re-reads the installation's workflow files, because the allowed interval depends on the plan.
 import { loadConfig } from '../src/config.ts';
 import { createDb } from '../src/db.ts';
@@ -8,8 +8,8 @@ import { resendMailer } from '../src/mailer.ts';
 import { syncInstallation } from '../src/sync.ts';
 
 const [who, plan] = process.argv.slice(2);
-if (!who || !['free', 'pro'].includes(plan)) {
-  console.error('Usage: npm run plan:set -- <installation id | account login> <free|pro>');
+if (!who || !['free', 'pro', 'team'].includes(plan)) {
+  console.error('Usage: npm run plan:set -- <installation id | account login> <free|pro|team>');
   process.exit(1);
 }
 const cfg = loadConfig();

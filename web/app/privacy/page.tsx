@@ -24,7 +24,7 @@ export default function Privacy() {
           <li>Your code. We read files under <code>.github/workflows/</code> to find schedules and keep only what’s listed above, not the files themselves.</li>
           <li>Personal access tokens. We use GitHub App tokens that GitHub issues for one hour at a time.</li>
           <li>Your GitHub sign-in token. At sign-in we ask GitHub which installations you can see, keep that list in the signed cookie, and discard the token.</li>
-          <li>Card details. There is no card checkout yet.</li>
+          <li>Card details. Dodo Payments takes payment on its own checkout page; we only keep its customer and subscription ids and the plan you’re on.</li>
         </ul>
         <h2>Why we use it</h2>
         <p>Only to run the service: triggering your workflows, showing their history, sending the alerts you ask for, and billing. We don’t sell data, show ads, or use your data to train models.</p>
@@ -34,6 +34,7 @@ export default function Privacy() {
           <li>DigitalOcean: hosting and database (United States).</li>
           <li>Cloudflare: DNS, network protection and email forwarding.</li>
           <li>Resend: sending alert emails.</li>
+          <li>Dodo Payments: checkout, subscriptions and invoices, as the merchant of record for paid plans.</li>
           <li>Sentry: error reports from our servers, which can include the page or webhook that failed. We don’t send personal data to it on purpose.</li>
         </ul>
         <h2>Your choices</h2>

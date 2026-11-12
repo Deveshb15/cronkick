@@ -9,7 +9,7 @@ export async function freshDb(): Promise<Db> {
 }
 
 /** Seed one installation, repo and workflow; returns their ids. */
-export async function seed(db: Db, opts: { plan?: 'free' | 'pro'; installationId?: number; repoId?: number; workflowId?: number } = {}) {
+export async function seed(db: Db, opts: { plan?: 'free' | 'pro' | 'team'; installationId?: number; repoId?: number; workflowId?: number } = {}) {
   const installationId = opts.installationId ?? 1;
   const repoId = opts.repoId ?? 10;
   const workflowId = opts.workflowId ?? 100;

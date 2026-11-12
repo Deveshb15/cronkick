@@ -1,10 +1,27 @@
 import type { Db } from './db.ts';
 
-export type PlanName = 'free' | 'pro';
-export const PLANS = {
-  free: { repos: Infinity, schedules: 10, floorMinutes: 15, historyRows: null as number | null, historyDays: 7 as number | null },
-  pro: { repos: Infinity, schedules: 50, floorMinutes: 5, historyRows: null as number | null, historyDays: 90 as number | null },
-} satisfies Record<PlanName, unknown>;
+export type PlanName = 'free' | 'pro' | 'team';
+type Plan = {
+  label: string; repos: number; schedules: number; floorMinutes: number; historyDays: number;
+  /** USD a month and a year; null for Free. */
+  price: { monthly: number; yearly: number } | null;
+  /** The GitHub account type that can buy it (installations.account_type); null for Free. */
+  for: 'User' | 'Organization' | null;
+};
+export const PLANS: Record<PlanName, Plan> = {
+  free: { label: 'Free', repos: Infinity, schedules: 3, floorMinutes: 15, historyDays: 7, price: null, for: null },
+  pro: { label: 'Pro', repos: Infinity, schedules: 50, floorMinutes: 5, historyDays: 90, price: { monthly: 5, yearly: 50 }, for: 'User' },
+  // ponytail: Team allows 200 schedules every minute, but each send is one GitHub API call and an installation gets
+  // about 5,000 an hour, so ~80 one-minute schedules is the real ceiling (documented in docs/plans). Enforce a
+  // per-installation sends-per-hour budget in applyLimits when a Team account gets near it.
+  team: { label: 'Team', repos: Infinity, schedules: 200, floorMinutes: 1, historyDays: 400, price: { monthly: 19, yearly: 190 }, for: 'Organization' },
+};
+
+export const isPaid = (plan: PlanName) => plan !== 'free';
+/** The one paid plan an account can buy: Team for organizations, Pro for personal accounts. */
+export const paidPlanFor = (accountType: string): Exclude<PlanName, 'free'> => (accountType === 'Organization' ? 'team' : 'pro');
+/** Days of history kept in the database: 91 for Free and Pro (so an upgrade shows the past 90 days), a day past Team's 400. */
+export const retainDaysJson = () => JSON.stringify(Object.fromEntries(Object.entries(PLANS).map(([n, p]) => [n, Math.max(p.historyDays, 90) + 1])));
 
 export async function planOf(db: Db, installationId: number): Promise<PlanName> {
   const { rows } = await db.query('SELECT plan FROM installations WHERE id = $1', [installationId]);
