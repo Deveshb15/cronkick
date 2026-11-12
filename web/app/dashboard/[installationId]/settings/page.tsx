@@ -34,13 +34,19 @@ function billingLine(b: Billing): string | null {
   return null;
 }
 
-export default async function Settings({ params, searchParams }: { params: Promise<{ installationId: string }>; searchParams: Promise<{ checkout?: string }> }) {
+export default async function Settings({ params, searchParams }: { params: Promise<{ installationId: string }>; searchParams: Promise<{ checkout?: string; status?: string }> }) {
   const id = Number((await params).installationId);
   const s = await requireInstallation(id, `/dashboard/${id}/settings`);
   const inst = (await installationsFor(db, s.installs)).find((i) => i.id === id)!;
   const used = (await accountHealth(db, [id], new Date())).get(id)!.schedules;
   const billing = await billingOf(db, id);
-  const justPaid = (await searchParams).checkout === 'done' && !isPaid(inst.plan);
+  // Back from checkout: the plan and status come from Dodo's webhooks. The URL's status (Dodo appends "active" or
+  // "failed", but anyone can edit it) only picks the wording while the webhook is still on its way.
+  const sp = await searchParams;
+  const returned = sp.checkout !== 'done' ? null
+    : isPaid(inst.plan) ? 'paid'
+    : sp.status === 'failed' || (billing.status === 'failed' && sp.status !== 'active') ? 'failed'
+    : 'pending';
   const limits = PLANS[inst.plan];
   const free = inst.plan === 'free';
   const offer = paidPlanFor(inst.account_type);
@@ -76,7 +82,9 @@ export default async function Settings({ params, searchParams }: { params: Promi
             <form action={openBillingPortal.bind(null, id)}><Button type="submit">Manage billing</Button></form>
           )}
         </div>
-        {justPaid && <p role="status" className="mt-4 rounded-lg bg-emerald-400/10 px-3 py-2 text-sm/6 text-emerald-300 inset-ring inset-ring-emerald-400/20">Payment received. Your plan switches to {paid.label} within a few seconds; refresh this page to see it.</p>}
+        {returned === 'failed' && <p role="status" className="mt-4 rounded-lg bg-red-400/10 px-3 py-2 text-sm/6 text-red-300 inset-ring inset-ring-red-400/20">The payment didn’t go through, so nothing was charged. Try again, or use a different card.</p>}
+        {returned === 'pending' && <p role="status" className="mt-4 rounded-lg bg-white/5 px-3 py-2 text-sm/6 text-zinc-300 inset-ring inset-ring-white/10">Confirming your payment with Dodo. Refresh in a few seconds to see your plan.</p>}
+        {returned === 'paid' && <p role="status" className="mt-4 rounded-lg bg-emerald-400/10 px-3 py-2 text-sm/6 text-emerald-300 inset-ring inset-ring-emerald-400/20">You’re on {limits.label}. Thanks for supporting Cronkick.</p>}
         {buy && (
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <form action={startCheckout.bind(null, id, 'monthly')}><Button type="submit" variant="primary">Get {paid.label} · ${paid.price!.monthly}/month</Button></form>
