@@ -76,6 +76,18 @@ export function Countdown({ to, className = '' }: { to: string; className?: stri
   return <span className={`tabular-nums ${className}`}>{now === null ? '' : countdown(new Date(to).getTime() - now)}</span>;
 }
 
+/** "T−58:41", "T−2:05:09", "T−3 d 04:00:00" until `to` (ISO); "now" once it's passed. Empty during server render. */
+export function TMinus({ to, className = '' }: { to: string; className?: string }) {
+  const now = useNow();
+  if (now === null) return <span className={className} />;
+  const s = Math.ceil((new Date(to).getTime() - now) / 1000);
+  if (s <= 0) return <span className={className}>now</span>;
+  const p = (n: number) => String(n).padStart(2, '0');
+  const [d, h, m] = [Math.floor(s / 86400), Math.floor(s / 3600) % 24, Math.floor(s / 60) % 60];
+  const clock = d ? `${d} d ${p(h)}:${p(m)}:${p(s % 60)}` : h ? `${h}:${p(m)}:${p(s % 60)}` : `${p(m)}:${p(s % 60)}`;
+  return <span className={`tabular-nums ${className}`}>T−{clock}</span>;
+}
+
 /** Copies `text` and says so for 1.5 s. */
 export function CopyButton({ text, label = 'Copy', className = '' }: { text: string; label?: string; className?: string }) {
   const [done, setDone] = useState(false);

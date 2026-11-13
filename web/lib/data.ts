@@ -140,6 +140,8 @@ export type WorkflowRow = {
   status: WorkflowStatus; c24: Counts24; health: WorkflowHealth; nextDue: string | null; dismissed: boolean;
   /** The next five due times when the workflow will be sent; empty otherwise. */
   upcoming: string[];
+  /** When Cronkick last read the workflow file (ISO), and the branch it dispatches on. */
+  readAt: string; branch: string;
 };
 export type RepoRow = { id: number; full_name: string; default_branch: string; workflows: WorkflowRow[] };
 /** `quiet`: live schedules and earlier runs, but nothing came due in the last 24 h (a weekly job on its off days). */
@@ -209,7 +211,7 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
   )).rows;
 
   const workflows = (await db.query(
-    `SELECT w.id, w.repo_id, w.name, w.path, w.flags, w.suggested_diff, w.dismissed_at IS NOT NULL AS dismissed,
+    `SELECT w.id, w.repo_id, w.name, w.path, w.flags, w.suggested_diff, w.dismissed_at IS NOT NULL AS dismissed, w.updated_at,
             coalesce(json_agg(json_build_object('cron', s.cron, 'tz', s.tz, 'status', s.status) ORDER BY s.id)
                      FILTER (WHERE s.id IS NOT NULL), '[]') AS schedules
        FROM workflows w JOIN repos r ON r.id = w.repo_id LEFT JOIN schedules s ON s.workflow_id = w.id
@@ -245,6 +247,7 @@ export async function overview(db: pg.Pool, installationId: number, now: Date) {
       id: Number(w.id), repo: repo.full_name, name: w.name, path: w.path, flags: w.flags, suggested_diff: w.suggested_diff, schedules: w.schedules,
       status, c24, health: workflowHealth(status === 'needs_fix', c24), nextDue: nextFor(w.schedules, sending && status === 'active', now), dismissed: w.dismissed,
       upcoming: sending && status === 'active' ? nextRuns(w.schedules, now) : [],
+      readAt: new Date(w.updated_at).toISOString(), branch: repo.default_branch,
     });
   }
 

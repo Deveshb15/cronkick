@@ -127,8 +127,8 @@ export default async function Overview({ params }: { params: Promise<{ installat
         <header className="space-y-2">
           <p className="text-[13px]/5 text-zinc-400">Overview</p>
           <h1 className="flex items-center gap-x-3 text-2xl/8 font-semibold tracking-tight text-balance">
-            <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${VERDICT_DOT[totals.verdict]}`} />
-            {VERDICT[totals.verdict](c)}
+            <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${totals.verdict === 'no_runs' && nk ? 'animate-pulse bg-brand-500' : VERDICT_DOT[totals.verdict]}`} />
+            {totals.verdict === 'no_runs' && nk ? <span>First run <Countdown to={nk.due} /></span> : VERDICT[totals.verdict](c)}
           </h1>
           <p className="text-sm/6 text-zinc-400">
             {summary ?? (nk ? <>Next run: {nk.workflow} <Time iso={nk.due} className="text-zinc-200" /> · <Countdown to={nk.due} /></> : 'Nothing is planned yet.')}
