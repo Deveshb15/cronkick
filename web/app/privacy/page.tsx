@@ -17,7 +17,8 @@ export default function Privacy() {
           <li>For each workflow: its path and name, the <code># cronkick</code> lines in it, the crons of a leftover <code>schedule:</code> block (to suggest the switch), and any compatibility warnings. A warning can name a workflow input or give a YAML parser’s error message with its line number.</li>
           <li>For each scheduled slot: due time, when we sent it, GitHub’s response, the run link and the job’s result. Deleted after 91 days.</li>
           <li>The alert email address you enter.</li>
-          <li>Two cookies: a signed sign-in cookie that lasts one hour, and one that remembers which account you last opened.</li>
+          <li>Two cookies of our own: a signed sign-in cookie that lasts one hour, and one that remembers which account you last opened. PostHog sets its own cookie to tell visits apart.</li>
+          <li>Product analytics: the pages you view, what you click, errors in your browser, and session recordings of the site with form inputs masked. Signed-in activity is linked to your GitHub user id and login.</li>
         </ul>
         <h2>What we don’t store</h2>
         <ul>
@@ -27,7 +28,7 @@ export default function Privacy() {
           <li>Card details. Dodo Payments takes payment on its own checkout page; we only keep its customer and subscription ids and the plan you’re on.</li>
         </ul>
         <h2>Why we use it</h2>
-        <p>Only to run the service: triggering your workflows, showing their history, sending the alerts you ask for, and billing. We don’t sell data, show ads, or use your data to train models.</p>
+        <p>To run the service: triggering your workflows, showing their history, sending the alerts you ask for, and billing. Analytics and recordings are used only to understand how Cronkick is used and to fix what’s confusing or broken. We don’t sell data, show ads, or use your data to train models.</p>
         <h2>Who processes data for us</h2>
         <ul>
           <li>GitHub: the API we call on your behalf.</li>
@@ -35,6 +36,7 @@ export default function Privacy() {
           <li>Cloudflare: DNS, network protection and email forwarding.</li>
           <li>Resend: sending alert emails.</li>
           <li>Dodo Payments: checkout, subscriptions and invoices, as the merchant of record for paid plans.</li>
+          <li>PostHog: product analytics, session recordings and error reports (United States).</li>
           <li>Sentry: error reports from our servers, which can include the page or webhook that failed. We don’t send personal data to it on purpose.</li>
         </ul>
         <h2>Your choices</h2>

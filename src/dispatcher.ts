@@ -1,12 +1,13 @@
 import type { Deps } from './deps.ts';
 import { DispatchTimeout, type DispatchResult } from './github.ts';
+import { track } from './posthog.ts';
 
 const LEASE_MS = 60_000;
 /** A call takes at most 10 s; don't start one with less lease than this left. */
 const MIN_LEASE_LEFT_MS = 15_000;
 const BATCH = 100;
 
-type Claimed = { id: number; installation_id: number; workflow_id: number; attempts: number; deadline_at: Date; lease_until: Date; full_name: string; default_branch: string };
+type Claimed = { id: number; installation_id: number; workflow_id: number; attempts: number; fire_at: Date; deadline_at: Date; lease_until: Date; full_name: string; default_branch: string };
 
 /**
  * Take due slots with a lease. SKIP LOCKED means two dispatchers never take the same row (R5).
@@ -25,7 +26,7 @@ export async function claim(deps: Deps, limit = BATCH): Promise<Claimed[]> {
              AND r.active AND NOT i.removed AND NOT i.suspended
            ORDER BY s.fire_at LIMIT $3
            FOR UPDATE OF s SKIP LOCKED)
-       RETURNING id, installation_id, repo_id, workflow_id, attempts, deadline_at, lease_until)
+       RETURNING id, installation_id, repo_id, workflow_id, attempts, fire_at, deadline_at, lease_until)
      SELECT c.*, r.full_name, r.default_branch FROM c JOIN repos r ON r.id = c.repo_id`,
     [now, new Date(now.getTime() + LEASE_MS), limit],
   );
@@ -92,6 +93,12 @@ async function fire(deps: Deps, s: Claimed): Promise<void> {
     result = e instanceof DispatchTimeout ? e : new DispatchTimeout(`Unexpected error: ${(e as Error).message}`);
   }
   await record(deps, s, result);
+  const outcome = result instanceof DispatchTimeout ? 'unknown' : result.status < 300 ? 'accepted' : retryable(result) ? 'retry' : 'rejected';
+  track('kick_dispatched', s.installation_id, {
+    outcome, attempt: s.attempts, workflow_id: s.workflow_id, repo: s.full_name,
+    status: result instanceof DispatchTimeout ? null : result.status,
+    delay_ms: deps.now().getTime() - new Date(s.fire_at).getTime(),
+  });
 }
 
 /** One tick: claim due slots and queue them. Returns without waiting for the calls; see drain(). */

@@ -13,6 +13,7 @@ import { collectProbes } from './probe/collector.ts';
 import { watchSchedules } from './schedule-watch.ts';
 import { webApp } from './web/app.ts';
 import { downgradeLapsed, dodoProducts } from './billing.ts';
+import { emitPostHogWorkerLog, shutdownPostHogWorkerLogs } from './posthog.ts';
 
 // Errors only (no tracing). Without SENTRY_DSN this is off and capture calls do nothing.
 if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, environment: 'production', tracesSampleRate: 0 });
@@ -29,6 +30,7 @@ const gh = githubApp(cfg);
 const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl };
 const app = webApp(deps, { webhookSecret: cfg.webhookSecret, billing: { secret: cfg.dodoWebhookSecret, products: dodoProducts() } });
 const server = serve({ fetch: app.fetch, port: cfg.port }, (i) => console.log(`cronkick listening on :${i.port}`));
+emitPostHogWorkerLog('worker started', { port: cfg.port });
 
 let stopping = false;
 /** Run fn every `ms`, never overlapping itself. Resolves when stopped and the last run has finished. */
@@ -83,9 +85,11 @@ for (const sig of ['SIGTERM', 'SIGINT'] as const) {
     if (stopping) return;
     stopping = true;
     console.log(`${sig}: stopping`);
+    emitPostHogWorkerLog('worker stopping', { signal: sig });
     server.close();
     await Promise.race([Promise.all(loops).then(() => drain(deps)), new Promise((r) => setTimeout(r, 15_000))]);
     await db.end();
+    await shutdownPostHogWorkerLogs();
     process.exit(0);
   });
 }

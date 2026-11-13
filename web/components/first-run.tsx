@@ -1,6 +1,7 @@
 'use client';
 import { CheckIcon } from '@heroicons/react/16/solid';
 import { useState } from 'react';
+import posthog from 'posthog-js';
 import { humanCron } from '@/lib/live';
 import { GitHubMark } from './icons';
 import { AlertHint, ButtonLink } from './ui';
@@ -30,7 +31,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
   const starterUrl = repo && `https://github.com/${repo.full_name}/new/${repo.default_branch.split('/').map(encodeURIComponent).join('/')}?filename=.github/workflows/cronkick-starter.yml&value=${encodeURIComponent(`${starter.join('\n')}\n`)}`;
   // A placeholder job every 15 minutes eats Actions minutes, so the starter opens on hourly; the chips still apply.
   const toStarter = () => { setMode('starter'); if (cron === presets[0].cron) setCron(presets[1].cron); };
-  const copy = () => navigator.clipboard.writeText(line).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  const copy = () => navigator.clipboard.writeText(line).then(() => { posthog.capture('setup_line_copied'); setCopied(true); setTimeout(() => setCopied(false), 1500); });
   const row = (text: string, n: number, note?: string) => {
     if (text.trim() === line) return <div key={n} className="overflow-x-auto bg-brand-500/10 px-4 text-brand-300 shadow-[inset_2px_0_0_var(--color-brand-500)]"><span className="mr-4 text-zinc-600">{n}</span>{text}</div>;
     const m = /^(\s*(?:- )?)([\w-]+):(.*)$/.exec(text);
@@ -59,7 +60,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
               {repos.length > 0 && (
                 <div className="mt-3 inline-flex rounded-lg bg-white/5 p-0.5 text-sm/6">
                   {([['line', 'I have a workflow'], ['starter', 'Start from a starter']] as const).map(([m, label]) => (
-                    <button key={m} type="button" aria-pressed={mode === m} onClick={m === 'starter' ? toStarter : () => setMode('line')} className={`rounded-md px-3 py-1 ${mode === m ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
+                    <button key={m} type="button" aria-pressed={mode === m} onClick={() => { posthog.capture('first_run_path_selected', { path: m }); if (m === 'starter') toStarter(); else setMode('line'); }} className={`rounded-md px-3 py-1 ${mode === m ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
                   ))}
                 </div>
               )}
@@ -81,7 +82,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
                       ) : <span className="text-zinc-200">{repo.full_name.split('/')[1]}</span>}
                       <span className="truncate">/.github/workflows/cronkick-starter.yml</span>
                     </span>
-                    <a target="_blank" rel="noreferrer" href={starterUrl} className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-brand-500 py-1 pr-2.5 pl-2 font-sans text-xs/5 font-semibold text-ink hover:bg-brand-400"><GitHubMark className="size-3.5" />Create on GitHub ↗</a>
+                    <a target="_blank" rel="noreferrer" href={starterUrl} onClick={() => posthog.capture('starter_workflow_opened')} className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-brand-500 py-1 pr-2.5 pl-2 font-sans text-xs/5 font-semibold text-ink hover:bg-brand-400"><GitHubMark className="size-3.5" />Create on GitHub ↗</a>
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2 border-b border-white/5 px-4 py-2 font-mono text-xs/5 text-zinc-400">

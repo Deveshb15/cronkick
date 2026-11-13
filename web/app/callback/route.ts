@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { captureServerEvent } from '@/lib/posthog-server';
 import { encodeSession, sessionCookie } from '@/lib/session';
 
 async function gh(path: string, token: string) {
@@ -28,9 +29,10 @@ export async function GET(req: NextRequest) {
     installs.push(...res.installations.map((i: { id: number }) => i.id));
     if (res.installations.length < 100) break;
   }
+  await captureServerEvent(`github:${user.id}`, 'github_login_completed', { installation_count: installs.length });
   // The token is dropped here; the session keeps only who signed in and what they can see.
   const res = NextResponse.redirect(new URL(req.cookies.get('oauth_next')?.value ?? '/dashboard', process.env.BASE_URL));
-  res.cookies.set(sessionCookie.name, encodeSession({ login: user.login, installs }), {
+  res.cookies.set(sessionCookie.name, encodeSession({ userId: user.id, login: user.login, installs }), {
     httpOnly: true, secure: process.env.BASE_URL?.startsWith('https://'), sameSite: 'lax', path: '/', maxAge: sessionCookie.maxAge,
   });
   res.cookies.delete('oauth_state');

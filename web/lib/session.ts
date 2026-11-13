@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers.js';
 
-export type Session = { login: string; installs: number[]; iat: number; exp: number };
+export type Session = { userId?: number; login: string; installs: number[]; iat: number; exp: number };
 
 const COOKIE = 'cronkick_session';
 const TTL_MS = 60 * 60_000; // short, so losing access to an org takes effect within the hour
@@ -13,7 +13,7 @@ const secret = () => {
 };
 const sign = (body: string) => createHmac('sha256', secret()).update(body).digest('base64url');
 
-/** `<base64 json>.<hmac>`. Holds only the login and installation ids, never a GitHub token. */
+/** `<base64 json>.<hmac>`. Holds the GitHub user id, login and installation ids, never a GitHub token. */
 export function encodeSession(s: Omit<Session, 'iat' | 'exp'>, now = Date.now()): string {
   const body = Buffer.from(JSON.stringify({ ...s, iat: now, exp: now + TTL_MS })).toString('base64url');
   return `${body}.${sign(body)}`;

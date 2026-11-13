@@ -24,7 +24,7 @@ export default async function Shell({ children, params }: { children: ReactNode;
   const current = accounts.find((a) => a.id === id)!;
   const limits = PLANS[inst.plan];
   const nav = (
-    <DashNav id={id} login={s.login} plan={inst.plan} offer={isPaid(inst.plan) ? null : paidPlanFor(inst.account_type)} used={current.schedules} limit={limits.schedules} floorMinutes={limits.floorMinutes}
+    <DashNav id={id} userId={s.userId} login={s.login} plan={inst.plan} offer={isPaid(inst.plan) ? null : paidPlanFor(inst.account_type)} used={current.schedules} limit={limits.schedules} floorMinutes={limits.floorMinutes}
       switcher={<AccountSwitcher current={current} accounts={accounts} installUrl={installUrl()} />} />
   );
   return (

@@ -1,6 +1,7 @@
 'use client';
 import { ChevronRightIcon } from '@heroicons/react/16/solid';
 import { useState, useTransition } from 'react';
+import posthog from 'posthog-js';
 
 export type Hide = (workflowId: number, hidden: boolean) => Promise<void>;
 export type Candidate = {
@@ -27,7 +28,7 @@ function CandidateRow({ c, open, plan, floor, hide }: { c: Candidate; open: bool
   const [hiding, startHide] = useTransition();
   const [copied, setCopied] = useState(false);
   const after = c.tooFast && c.clamped && useClamped ? c.clamped : c.after;
-  const copy = () => navigator.clipboard.writeText(body(after).join('\n')).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  const copy = () => navigator.clipboard.writeText(body(after).join('\n')).then(() => { posthog.capture('schedule_suggestion_copied', { uses_clamped_schedule: c.tooFast && !!c.clamped && useClamped }); setCopied(true); setTimeout(() => setCopied(false), 1500); });
   const chip = (on: boolean) => `min-h-11 rounded-md px-2 py-1 transition sm:min-h-0 ${on ? 'bg-white/10 font-medium text-white' : 'text-zinc-400 hover:text-white'}`;
   return (
     <details open={open} className="group/c rounded-xl bg-white/[0.02] inset-ring inset-ring-white/10">

@@ -1,5 +1,6 @@
 import type { Deps } from './deps.ts';
 import type { Mail } from './mailer.ts';
+import { track } from './posthog.ts';
 
 async function recipient(deps: Deps, installationId: number): Promise<string | null> {
   const { rows } = await deps.db.query('SELECT alert_email FROM installations WHERE id = $1', [installationId]);
@@ -22,6 +23,8 @@ export async function sendLimitNotice(deps: Deps, installationId: number, paused
     [installationId, deps.now()],
   );
   if (!rows[0]) return; // already sent, or another server is sending it
+  // ponytail: fires only when an alert email is set (it rides on the one-send claim); move it if the funnel needs every account.
+  track('plan_limit_reached', installationId, { paused, plan: rows[0].plan });
   try {
     await deps.mailer.send({
       to,

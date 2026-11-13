@@ -2,14 +2,27 @@
 import { Cog6ToothIcon, Squares2X2Icon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { ReactNode } from 'react';
+import posthog from 'posthog-js';
+import { useEffect, type ReactNode } from 'react';
 import { PLANS, type PlanName } from '../../src/plans.ts';
 
-type Props = { id: number; switcher: ReactNode; login: string; plan: PlanName; offer: PlanName | null; used: number; limit: number; floorMinutes: number };
+type Props = { id: number; switcher: ReactNode; userId?: number; login: string; plan: PlanName; offer: PlanName | null; used: number; limit: number; floorMinutes: number };
+
+let identifiedUserId: number | undefined;
 
 /** Sidebar: account switcher, two destinations, plan usage, and who is signed in. */
-export function DashNav({ id, switcher, login, plan, offer, used, limit, floorMinutes }: Props) {
+export function DashNav({ id, switcher, userId, login, plan, offer, used, limit, floorMinutes }: Props) {
   const path = usePathname();
+
+  useEffect(() => {
+    if (typeof userId !== 'number' || identifiedUserId === userId) return;
+    posthog.identify(`github:${userId}`, { github_login: login });
+    identifiedUserId = userId;
+  }, [login, userId]);
+  // Every event in the dashboard belongs to the GitHub account being viewed (B2B: one installation, many people).
+  useEffect(() => {
+    posthog.group('installation', String(id), { plan, schedules_used: used, schedule_limit: limit, at_limit: used >= limit });
+  }, [id, plan, used, limit]);
   const settings = path.endsWith('/settings');
   const item = 'flex min-h-11 items-center gap-x-2.5 rounded-lg px-2.5 py-2 text-base/6 font-medium transition sm:text-sm/6 lg:min-h-0';
   const idle = 'text-zinc-400 hover:bg-white/5 hover:text-white';
@@ -39,7 +52,7 @@ export function DashNav({ id, switcher, login, plan, offer, used, limit, floorMi
         <div className="flex items-center gap-x-2 px-2.5 text-xs/5 text-zinc-400">
           <img src={`https://github.com/${login}.png?size=40`} alt="" className="size-5 shrink-0 rounded-full outline-1 -outline-offset-1 outline-white/10" />
           <span className="min-w-0 truncate">Signed in as {login}</span>
-          <a href="/logout" className="-my-3 ml-auto flex min-h-11 shrink-0 items-center px-1 font-medium hover:text-white lg:my-0 lg:min-h-0">Sign out</a>
+          <a href="/logout" onClick={() => { posthog.reset(); identifiedUserId = undefined; }} className="-my-3 ml-auto flex min-h-11 shrink-0 items-center px-1 font-medium hover:text-white lg:my-0 lg:min-h-0">Sign out</a>
         </div>
       </div>
     </div>

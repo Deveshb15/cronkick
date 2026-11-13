@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/node';
 import { tx } from './db.ts';
 import type { Deps } from './deps.ts';
 import { paidPlanFor, type PlanName } from './plans.ts';
+import { identifyInstallation, track } from './posthog.ts';
 import { afterChange, syncInstallation } from './sync.ts';
 
 type Paid = Exclude<PlanName, 'free'>;
@@ -91,6 +92,8 @@ export async function handleDodoWebhook(deps: Deps, cfg: BillingConfig, h: Heade
               paid_through = $6, billing_updated_at = $7 WHERE id = $1`,
       [inst.id, plan, sub.customer?.customer_id ?? null, sub.subscription_id, sub.status, paidThrough, at],
     );
+    track('subscription_updated', inst.id, { type: event.type, status: sub.status ?? null, plan_before: inst.plan, plan_after: plan, plan_changed: plan !== inst.plan, product: paid });
+    identifyInstallation(inst.id, { plan, subscription_status: sub.status ?? null });
     return plan !== inst.plan ? inst.id as number : null;
   });
   if (changed) await resync(deps, changed);
@@ -118,5 +121,9 @@ export async function downgradeLapsed(deps: Deps, now: Date): Promise<void> {
       WHERE plan <> 'free' AND subscription_status = 'cancelled' AND paid_through <= $1 RETURNING id`,
     [now],
   );
-  for (const r of rows) await resync(deps, r.id);
+  for (const r of rows) {
+    track('plan_lapsed_to_free', r.id);
+    identifyInstallation(r.id, { plan: 'free' });
+    await resync(deps, r.id);
+  }
 }
