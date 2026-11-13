@@ -10,7 +10,7 @@ import { AlertHint, ButtonLink } from './ui';
  * selected, the page points at choosing them first.
  */
 export function FirstRun({ installationId, repos, manageUrl, floor, candidates, alerts }: {
-  installationId: number; repos: string[]; manageUrl: string; floor: number; candidates: number; alerts: boolean;
+  installationId: number; repos: { full_name: string; default_branch: string }[]; manageUrl: string; floor: number; candidates: number; alerts: boolean;
 }) {
   const presets = [
     { cron: `*/${Math.max(15, floor)} * * * *`, label: `Every ${Math.max(15, floor)} min` },
@@ -20,6 +20,12 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
   const [cron, setCron] = useState(presets[0].cron);
   const [copied, setCopied] = useState(false);
   const line = `# cronkick: "${cron}"`;
+  // A runnable example in GitHub's "new file" editor: one click to commit, and that commit is the push step 3 waits
+  // for. The every-N-minutes preset becomes hourly so a placeholder job doesn't eat the account's Actions minutes.
+  const starterCron = cron === presets[0].cron ? '0 * * * *' : cron;
+  const starter = `name: Cronkick starter\n# Replace the echo with your job. Edit the cronkick line to change when it runs.\non:\n  workflow_dispatch:\n  # cronkick: "${starterCron}"\njobs:\n  hello:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo "Cronkick started this run at $(date -u)"\n`;
+  const starterUrl = (r: { full_name: string; default_branch: string }) =>
+    `https://github.com/${r.full_name}/new/${r.default_branch.split('/').map(encodeURIComponent).join('/')}?filename=.github/workflows/cronkick-starter.yml&value=${encodeURIComponent(starter)}`;
   const copy = () => navigator.clipboard.writeText(line).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
   const done = <span className="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-400/15 text-emerald-300"><CheckIcon aria-hidden="true" className="size-4 fill-current" /></span>;
   const step = (n: number, on: boolean) => <span className={`grid size-7 shrink-0 place-items-center rounded-full font-mono text-sm ${on ? 'bg-brand-500 font-semibold text-ink' : 'bg-white/10 text-zinc-300'}`}>{n}</span>;
@@ -29,7 +35,7 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
             {repos.length ? done : step(1, true)}
             <div className="min-w-0 flex-1">
               <p className="font-medium">{repos.length ? `Cronkick can see ${repos.length} ${repos.length === 1 ? 'repository' : 'repositories'}` : 'Choose which repositories Cronkick can see'}</p>
-              <p className="text-sm/6 text-zinc-400">{repos.length ? `${repos.map((r) => r.split('/')[1]).slice(0, 3).join(', ')}${repos.length > 3 ? ` +${repos.length - 3} more` : ''} · ` : ''}<a target="_blank" rel="noreferrer" href={manageUrl} className="text-zinc-300 underline decoration-white/20 hover:decoration-white">{repos.length ? 'Add more on GitHub ↗' : 'Pick repositories on GitHub ↗'}</a></p>
+              <p className="text-sm/6 text-zinc-400">{repos.length ? `${repos.map((r) => r.full_name.split('/')[1]).slice(0, 3).join(', ')}${repos.length > 3 ? ` +${repos.length - 3} more` : ''} · ` : ''}<a target="_blank" rel="noreferrer" href={manageUrl} className="text-zinc-300 underline decoration-white/20 hover:decoration-white">{repos.length ? 'Add more on GitHub ↗' : 'Pick repositories on GitHub ↗'}</a></p>
             </div>
           </li>
           <li className="flex gap-4">
@@ -59,6 +65,9 @@ export function FirstRun({ installationId, repos, manageUrl, floor, candidates, 
                 </div>
               </div>
               <p className="mt-2 text-[13px]/5 text-zinc-400">Runs {humanCron(cron).toLowerCase()}, UTC. Already using <code className="font-mono">schedule:</code>? Remove it so GitHub doesn’t run it a second time, late.</p>
+              {repos.length > 0 && (
+                <p className="mt-1 text-[13px]/5 text-zinc-400">No workflow yet? Create a starter that runs {humanCron(starterCron).toLowerCase()} in {repos.slice(0, 3).map((r, i) => <span key={r.full_name}>{i > 0 && ', '}<a target="_blank" rel="noreferrer" href={starterUrl(r)} className="text-zinc-300 underline decoration-white/20 hover:decoration-white">{r.full_name.split('/')[1]} ↗</a></span>)}. Commit it on GitHub and this page picks it up.</p>
+              )}
               {candidates > 0 && <p className="mt-1 text-xs/5 text-zinc-400">Or move one of your {candidates} existing GitHub schedules: see “Still on GitHub’s schedule” below.</p>}
             </div>
           </li>

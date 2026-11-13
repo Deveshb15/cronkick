@@ -96,7 +96,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
   if (totals.firstRun && !shownWfs.length) {
     return (
       <>
-        <FirstRun installationId={id} repos={repos.map((r) => r.full_name)} manageUrl={manageReposUrl(inst)} floor={limits.floorMinutes} candidates={candidates.length} alerts={!!inst.alert_email} />
+        <FirstRun installationId={id} repos={repos.map(({ full_name, default_branch }) => ({ full_name, default_branch }))} manageUrl={manageReposUrl(inst)} floor={limits.floorMinutes} candidates={candidates.length} alerts={!!inst.alert_email} />
         {(candidates.length > 0 || hidden.length > 0) && <div className={`${container} pb-16`}>{switchSection}</div>}
         <DispatchToasts items={items} />
       </>
