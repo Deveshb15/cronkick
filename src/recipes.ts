@@ -6,7 +6,10 @@
 
 export type Engine = 'claude' | 'codex';
 export type Recipe = {
-  slug: string; title: string; blurb: string; engine: Engine; defaultCron: string; defaultTz: string;
+  slug: string; title: string; blurb: string;
+  /** What a run that does something leaves behind, e.g. "One draft PR". */
+  output: string;
+  engine: Engine; defaultCron: string; defaultTz: string;
   secrets: string[]; permissions: Record<string, string>; worstCase: string; yaml: string;
 };
 
@@ -111,8 +114,9 @@ const prChecks = (slug: string) => `          [ "$(gh pr list --label "$LABEL" -
 const SPECS: Spec[] = [
   {
     slug: 'issue-triage',
+    output: 'Labels and comments',
     title: 'Morning issue triage',
-    blurb: 'Weekdays at 08:00, runs Claude Code over new issues: adds existing labels and asks for missing details. No code access beyond read.',
+    blurb: 'Labels new issues and asks their authors for missing details. It can read the code, never change it.',
     engine: 'claude', defaultCron: '0 8 * * 1-5', defaultTz: 'UTC',
     secrets: ['ANTHROPIC_API_KEY'],
     permissions: {
@@ -172,8 +176,9 @@ const SPECS: Spec[] = [
   },
   {
     slug: 'nightly-deps',
+    output: 'One draft PR',
     title: 'Nightly dependency upgrades',
-    blurb: 'Every night, runs Claude Code to upgrade outdated npm dependencies that keep the tests passing, as one draft PR.',
+    blurb: 'Upgrades outdated npm dependencies that keep your tests passing, and opens them as one draft PR.',
     engine: 'claude', defaultCron: '30 2 * * *', defaultTz: 'UTC',
     secrets: ['ANTHROPIC_API_KEY'],
     permissions: {
@@ -214,8 +219,9 @@ ${openDraftPr('nightly-deps', 'Upgrade dependencies', ". ':!node_modules' ':!.cr
   },
   {
     slug: 'docs-drift',
+    output: 'One draft PR',
     title: 'Weekly docs drift fix',
-    blurb: 'Mondays, runs Claude Code over last week\'s commits and fixes Markdown docs they made wrong, as one draft PR.',
+    blurb: 'Finds Markdown docs that last week’s commits made wrong and fixes them in one draft PR.',
     engine: 'claude', defaultCron: '0 7 * * 1', defaultTz: 'UTC',
     secrets: ['ANTHROPIC_API_KEY'],
     permissions: {
@@ -253,8 +259,9 @@ ${openDraftPr('docs-drift', 'Fix docs drift', "'*.md'")}`,
   },
   {
     slug: 'flaky-tests',
+    output: 'One rolling issue',
     title: 'Daily flaky test report',
-    blurb: 'Every morning, runs Codex over the last 24 hours of failed Actions runs and keeps one rolling issue of flaky tests up to date.',
+    blurb: 'Reads the last day of failed Actions runs and keeps one issue listing the tests that look flaky.',
     engine: 'codex', defaultCron: '0 6 * * *', defaultTz: 'UTC',
     secrets: ['OPENAI_API_KEY'],
     permissions: {
@@ -315,8 +322,9 @@ ${openDraftPr('docs-drift', 'Fix docs drift', "'*.md'")}`,
   },
   {
     slug: 'pr-digest',
+    output: 'One Slack message',
     title: 'Daily merged-PR digest to Slack',
-    blurb: 'Every morning, runs Claude Code to summarise the PRs merged in the last 24 hours and posts the digest to a Slack channel.',
+    blurb: 'Summarises the pull requests merged in the last 24 hours and posts the digest to a Slack channel.',
     engine: 'claude', defaultCron: '0 9 * * *', defaultTz: 'UTC',
     secrets: ['ANTHROPIC_API_KEY', 'SLACK_WEBHOOK_URL'],
     permissions: {

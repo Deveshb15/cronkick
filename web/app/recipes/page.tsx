@@ -1,29 +1,81 @@
+import { ClockIcon } from '@heroicons/react/16/solid';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Cards, prose } from '@/components/docs';
+import { EngineBadge, RunSteps } from '@/components/recipes';
+import { SplitHeading } from '@/components/section';
 import { container, SiteFooter, SiteHeader } from '@/components/site';
+import { Eyebrow } from '@/components/ui';
+import { appSlug } from '@/lib/format';
+import { humanCron } from '@/lib/live';
 import { RECIPES } from '../../../src/recipes.ts';
 
 export const metadata: Metadata = {
   title: 'Agent recipes',
-  description: 'Scheduled AI agent workflows for your own GitHub Actions: issue triage, dependency upgrades, docs fixes, flaky test reports and PR digests, sent on time by Cronkick.',
+  description: 'Scheduled Claude Code and Codex workflows for your own GitHub Actions: issue triage, dependency upgrades, docs fixes, flaky test reports and PR digests, sent on time by Cronkick.',
 };
 
 export default function Recipes() {
   return (
     <>
       <SiteHeader />
-      <main className={`${container} pt-12 pb-24`}>
-        <div className={`mx-auto max-w-3xl ${prose}`}>
-          <p className="font-mono text-xs/5 tracking-wider text-brand-400 uppercase">Recipes</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-pretty text-white sm:text-4xl">Agent recipes</h1>
-          <p className="mt-4 text-lg/8 text-pretty text-zinc-400">
-            Workflows that run Claude Code or Codex on a schedule, in your own GitHub Actions, with your own API key. Cronkick sends each run on time and never twice;
-            a check before the agent skips runs with nothing to do, and every run reports back what it did and what it cost.
-          </p>
-          <Cards items={RECIPES.map((r) => ({ href: `/recipes/${r.slug}`, title: r.title, body: r.blurb }))} />
-          <p>How they avoid duplicate PRs, what they can and can’t do, and how API keys work: <Link href="/docs/recipes">Agent recipes in the docs</Link>.</p>
-        </div>
+      <main>
+        <section className="pt-16 pb-16 sm:pt-24 sm:pb-20">
+          <div className={container}>
+            <Eyebrow>Agent recipes</Eyebrow>
+            <h1 className="mt-4 max-w-[24ch] text-4xl font-semibold tracking-tight text-balance text-white sm:text-5xl">Scheduled agents that run on time, once</h1>
+            <p className="mt-6 max-w-[48ch] text-lg text-pretty text-zinc-400">
+              Workflows that run Claude Code or Codex in your own GitHub Actions, with your own API key. Cronkick starts each run on time and never twice, and every run reports what it did and what it cost.
+            </p>
+          </div>
+        </section>
+
+        <section className="pb-24 sm:pb-32">
+          <div className={container}>
+            <ul role="list" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {RECIPES.map((r) => (
+                <li key={r.slug}>
+                  <Link href={`/recipes/${r.slug}`} className="group flex h-full flex-col rounded-2xl bg-zinc-900/50 p-6 inset-ring inset-ring-white/10 hover:bg-zinc-900/80 hover:inset-ring-white/20">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <EngineBadge engine={r.engine} />
+                      <p className="flex items-center gap-x-1.5 text-sm/6 text-zinc-400">
+                        <ClockIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500" />{humanCron(r.defaultCron)} {r.defaultTz}
+                      </p>
+                    </div>
+                    <h2 className="mt-5 text-lg/7 font-semibold text-white group-hover:text-brand-300 sm:text-base/7">{r.title}</h2>
+                    <p className="mt-2 flex-1 text-base/7 text-pretty text-zinc-400 sm:text-sm/6">{r.blurb}</p>
+                    <p className="mt-6 flex items-center justify-between gap-x-4 border-t border-white/5 pt-4 text-base/6 text-zinc-300 sm:text-sm/6">
+                      {r.output}
+                      <span aria-hidden="true" className="text-zinc-500 group-hover:text-white">→</span>
+                    </p>
+                  </Link>
+                </li>
+              ))}
+              <li>
+                <Link href="/docs/migrate" className="group flex h-full flex-col rounded-2xl p-6 outline-1 -outline-offset-1 outline-white/15 outline-dashed hover:bg-white/[0.02] hover:outline-white/30">
+                  <p className="text-base/6 font-medium text-zinc-400 sm:text-sm/6">Bring your own</p>
+                  <h2 className="mt-5 text-lg/7 font-semibold text-white group-hover:text-brand-300 sm:text-base/7">Already run an agent on <span className="font-mono">schedule:</span>?</h2>
+                  <p className="mt-2 flex-1 text-base/7 text-pretty text-zinc-400 sm:text-sm/6">Swap the schedule for one marker line and Cronkick fires the workflow you already have, on time. Add <span className="font-mono text-zinc-300">{appSlug()}</span> to the agent action’s allowed bots.</p>
+                  <p className="mt-6 flex items-center justify-between gap-x-4 border-t border-white/5 pt-4 text-base/6 text-zinc-300 sm:text-sm/6">
+                    Moving from schedule:
+                    <span aria-hidden="true" className="text-zinc-500 group-hover:text-white">→</span>
+                  </p>
+                </Link>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="border-t border-white/5 py-24 sm:py-32">
+          <div className={container}>
+            <SplitHeading eyebrow="Every recipe" title="Built so a schedule can’t burn you">
+              <p>Scheduled agents go wrong in three ways: a run that never happens, the same PR opened twice, and a green check that did nothing. Each recipe is built against all three.</p>
+            </SplitHeading>
+            <RunSteps output="One PR, issue, comment or message" className="mt-14 sm:grid-cols-2 lg:grid-cols-4" />
+            <p className="mt-12 text-base/7 text-zinc-400 sm:text-sm/6">
+              <Link href="/docs/recipes" className="font-medium text-white hover:underline">How recipes avoid duplicates, and API key or subscription →</Link>
+            </p>
+          </div>
+        </section>
       </main>
       <SiteFooter />
     </>

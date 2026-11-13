@@ -24,10 +24,9 @@ function Status({ s }: { s: HistoryRow }) {
 function Receipt({ s }: { s: HistoryRow }) {
   const r = receiptLine(s.receipt);
   if (!r) return null;
-  const cls = 'block text-xs/5 text-zinc-400';
   return r.url
-    ? <a target="_blank" rel="noreferrer" href={r.url} className={`${cls} underline decoration-white/20 hover:text-zinc-200`}>{r.text} ↗</a>
-    : <span className={cls}>{r.text}</span>;
+    ? <a target="_blank" rel="noreferrer" href={r.url} className="block text-zinc-400 hover:text-white hover:underline">{r.text} ↗</a>
+    : <span className="block text-zinc-400">{r.text}</span>;
 }
 const took = (s: HistoryRow) => (s.runStartedAt && s.runCompletedAt ? fmtDuration(Date.parse(s.runCompletedAt) - Date.parse(s.runStartedAt)) : null);
 

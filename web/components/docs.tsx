@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { page } from '@/lib/docs';
 import { CopyButton } from './docs-nav';
 
-export const prose = [
+const prose = [
   'text-[0.9375rem]/7 text-zinc-300',
   '[&_p]:mt-4 [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-2 [&_li]:pl-1 [&_li]:marker:text-zinc-600',
   '[&_a:not(.plain)]:font-medium [&_a:not(.plain)]:text-white [&_a:not(.plain)]:underline [&_a:not(.plain)]:decoration-brand-500/50 [&_a:not(.plain)]:underline-offset-4 [&_a:not(.plain):hover]:decoration-brand-500',

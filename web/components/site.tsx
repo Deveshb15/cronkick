@@ -25,9 +25,10 @@ export async function SiteHeader() {
       <div className={container}>
         <div className="pointer-events-auto relative flex h-14 items-center gap-x-6 rounded-[1.25rem] bg-zinc-900/55 pr-3 pl-5 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] inset-ring inset-ring-white/10 backdrop-blur-xl backdrop-saturate-150">
           <div className="flex flex-1 items-center"><Logo /></div>
-          <nav className="flex items-center gap-x-1 max-md:hidden">
+          <nav className="flex items-center gap-x-1 max-lg:hidden">
             <Link href="/#how-it-works" className={link}>How it works</Link>
             <Link href="/#pricing" className={link}>Pricing</Link>
+            <Link href="/recipes" className={link}>Recipes</Link>
             <Link href="/docs" className={link}>Docs</Link>
             <Link href="/lateness" className={link}>GitHub lateness</Link>
           </nav>
@@ -56,6 +57,7 @@ export function SiteFooter() {
         <p className="text-sm/6 text-zinc-500">© 2026 Cronkick. Operated by Devesh Bhimanpelli, India.</p>
         <nav className="flex flex-wrap gap-x-6 gap-y-2 text-base/6 font-normal text-zinc-400 sm:text-sm/6">
           <Link href="/lateness" className={link}>GitHub lateness</Link>
+          <Link href="/recipes" className={link}>Agent recipes</Link>
           <Link href="/privacy" className={link}>Privacy</Link>
           <Link href="/terms" className={link}>Terms</Link>
           <Link href="/docs" className={link}>Docs</Link>
