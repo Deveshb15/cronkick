@@ -562,3 +562,89 @@ export async function setDismissed(db: pg.Pool, installationId: number, workflow
 export async function setAlertEmail(db: pg.Pool, installationId: number, email: string) {
   await db.query('UPDATE installations SET alert_email = $2 WHERE id = $1', [installationId, email]);
 }
+
+export type RescueMode = 'off' | 'shadow' | 'rerun';
+export async function rescueSettings(db: pg.Pool, installationId: number): Promise<{ mode: RescueMode; checksRead: boolean }> {
+  const r = (await db.query('SELECT rescue_mode, checks_read FROM installations WHERE id = $1', [installationId])).rows[0];
+  return { mode: r?.rescue_mode ?? 'shadow', checksRead: !!r?.checks_read };
+}
+/** Workflows with Cronkick schedules, with their re-run opt-in and what blocks it. */
+export async function rescueWorkflows(db: pg.Pool, installationId: number): Promise<{ id: number; name: string; repo: string; on: boolean; blockers: string[] }[]> {
+  const { rows } = await db.query(
+    `SELECT w.id, w.name, r.full_name, w.rescue_rerun, w.rescue_blockers FROM workflows w JOIN repos r ON r.id = w.repo_id
+      WHERE r.installation_id = $1 AND r.active AND w.present AND EXISTS (SELECT 1 FROM schedules s WHERE s.workflow_id = w.id)
+      ORDER BY r.full_name, w.name`,
+    [installationId],
+  );
+  return rows.map((r) => ({ id: Number(r.id), name: r.name, repo: r.full_name, on: r.rescue_rerun, blockers: r.rescue_blockers }));
+}
+/** Turn re-runs on or off for one workflow of this installation. Never on while the workflow has blockers. */
+export async function setWorkflowRescue(db: pg.Pool, installationId: number, workflowId: number, on: boolean): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `UPDATE workflows SET rescue_rerun = $3
+      WHERE id = $1 AND repo_id IN (SELECT id FROM repos WHERE installation_id = $2) AND (NOT $3 OR rescue_blockers = '[]')`,
+    [workflowId, installationId, on],
+  );
+  return rowCount === 1;
+}
+/** What Rescue did for each of these slots' runs, for the history badge. */
+export async function rescueBySlot(db: pg.Pool, installationId: number, slotIds: number[]): Promise<Record<number, string>> {
+  const { rows } = await db.query(
+    `SELECT slot_id, state, retry_conclusion FROM rescue_runs WHERE installation_id = $1 AND slot_id = ANY($2) AND rerun_at IS NOT NULL`,
+    [installationId, slotIds],
+  );
+  return Object.fromEntries(rows.map((r) => [Number(r.slot_id), r.state === 'done' ? `Re-run by Rescue: ${r.retry_conclusion}` : 'Re-run by Rescue']));
+}
+export async function setRescueMode(db: pg.Pool, installationId: number, mode: RescueMode) {
+  await db.query('UPDATE installations SET rescue_mode = $2 WHERE id = $1', [installationId, mode]);
+}
+
+export type RescueRow = {
+  id: number; completedAt: string; repo: string; workflow: string; verdict: string | null; state: string; wouldRerun: boolean | null;
+  skipReason: string | null; runUrl: string; runAttempt: number; retryConclusion: string | null; cronkick: boolean; rerunNote: string | null;
+  jobs: { name: string; class: string; matched: string | null }[];
+};
+
+/** Failed runs Rescue looked at, newest first, never older than the plan shows. `all` includes the ones that failed in the code. */
+export async function rescueRuns(db: pg.Pool, installationId: number, now: Date, all: boolean, limit = 200): Promise<{ rows: RescueRow[]; hidden: number }> {
+  const floor = await retainedFrom(db, installationId, now);
+  const { rows } = await db.query(
+    `SELECT x.id, x.completed_at, r.full_name, x.workflow_name, x.verdict, x.state, x.would_rerun, x.skip_reason, x.run_url, x.run_attempt,
+            x.retry_conclusion, x.slot_id, x.jobs, x.rerun_note
+       FROM rescue_runs x JOIN repos r ON r.id = x.repo_id
+      WHERE x.installation_id = $1 AND x.completed_at > $2 AND ($3 OR x.verdict IS DISTINCT FROM 'user')
+      ORDER BY x.completed_at DESC LIMIT $4`,
+    [installationId, floor, all, limit],
+  );
+  const hidden = all ? 0 : (await db.query(
+    `SELECT count(*)::int AS n FROM rescue_runs WHERE installation_id = $1 AND completed_at > $2 AND verdict = 'user'`, [installationId, floor])).rows[0].n;
+  return {
+    hidden,
+    rows: rows.map((r) => ({
+      id: Number(r.id), completedAt: new Date(r.completed_at).toISOString(), repo: r.full_name, workflow: r.workflow_name, verdict: r.verdict, state: r.state,
+      wouldRerun: r.would_rerun, skipReason: r.skip_reason, runUrl: r.run_url, runAttempt: r.run_attempt, retryConclusion: r.retry_conclusion,
+      cronkick: r.slot_id !== null, jobs: r.jobs ?? [], rerunNote: r.rerun_note,
+    })),
+  };
+}
+
+/** Runs GitHub broke (never got a runner, or a GitHub service failed during setup) in the last 7 days. */
+export async function rescueBrokeCount(db: pg.Pool, installationId: number, now: Date): Promise<number> {
+  return (await db.query(
+    `SELECT count(*)::int AS n FROM rescue_runs WHERE installation_id = $1 AND verdict = 'github_broke' AND completed_at > $2::timestamptz - interval '7 days'`,
+    [installationId, now],
+  )).rows[0].n;
+}
+
+/** Cronkick runs GitHub accepted over an hour ago that never started (stuck in GitHub's queue). Reported only; never cancelled. */
+export async function stuckRuns(db: pg.Pool, installationId: number, now: Date): Promise<{ id: number; firedAt: string; repo: string; workflow: string; runUrl: string | null }[]> {
+  const floor = await retainedFrom(db, installationId, now);
+  const { rows } = await db.query(
+    `SELECT s.id, s.fired_at, r.full_name, w.name, s.run_url FROM slots s JOIN workflows w ON w.id = s.workflow_id JOIN repos r ON r.id = s.repo_id
+      WHERE s.installation_id = $1 AND s.state = 'accepted' AND s.fired_at > $2 AND s.fired_at < $3::timestamptz - interval '60 minutes'
+        AND s.run_started_at IS NULL AND s.conclusion IS NULL
+      ORDER BY s.fired_at DESC LIMIT 20`,
+    [installationId, floor, now],
+  );
+  return rows.map((r) => ({ id: Number(r.id), firedAt: new Date(r.fired_at).toISOString(), repo: r.full_name, workflow: r.name, runUrl: r.run_url }));
+}

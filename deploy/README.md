@@ -59,7 +59,7 @@ github.com → your avatar → **Settings → Developer settings → GitHub Apps
 | Webhook → Active | on |
 | Webhook URL | `https://cronkick.xyz/webhooks` |
 | Webhook secret | output of `openssl rand -hex 32` → `GITHUB_WEBHOOK_SECRET` |
-| Repository permissions | **Actions: Read and write**, **Contents: Read-only**, Metadata: Read-only (automatic) |
+| Repository permissions | **Actions: Read and write**, **Checks: Read-only** (Rescue reads GitHub's error messages on failed jobs), **Contents: Read-only**, Metadata: Read-only (automatic) |
 | Account permissions | none |
 | Subscribe to events | **Push**, **Workflow run** (`installation` events are always sent) |
 | Where can this GitHub App be installed? | **Any account** |

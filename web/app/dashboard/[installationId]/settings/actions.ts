@@ -1,11 +1,12 @@
 'use server';
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireInstallation } from '@/lib/access';
 import { checkoutUrl, portalUrl, type Interval } from '@/lib/billing';
 import { db } from '@/lib/db';
-import { billingOf, canBuy, installationsFor, setAlertEmail } from '@/lib/data';
+import { billingOf, canBuy, installationsFor, setAlertEmail, setRescueMode, setWorkflowRescue } from '@/lib/data';
 import { captureServerEvent, distinctIdFor } from '@/lib/posthog-server';
-import { paidPlanFor } from '../../../../../src/plans.ts';
+import { isPaid, paidPlanFor } from '../../../../../src/plans.ts';
 
 export type SaveState = { ok: boolean; error: string | null; email: string };
 
@@ -38,4 +39,27 @@ export async function openBillingPortal(id: number): Promise<void> {
   const url = await portalUrl(customer, id);
   await captureServerEvent(distinctIdFor(session), 'billing_portal_opened', {}, id);
   redirect(url);
+}
+
+/** Rescue off, report only, or re-run once. Re-run once only on a paid plan while re-runs are enabled on the server. */
+export async function saveRescueMode(id: number, form: FormData): Promise<void> {
+  const session = await requireInstallation(id, `/dashboard/${id}/settings`);
+  const mode = String(form.get('mode') ?? '');
+  if (mode !== 'off' && mode !== 'shadow' && mode !== 'rerun') return;
+  if (mode === 'rerun') {
+    const [inst] = await installationsFor(db, [id]);
+    if (!inst || !isPaid(inst.plan) || process.env.RESCUE_RERUN !== 'on') return;
+  }
+  await setRescueMode(db, id, mode);
+  await captureServerEvent(distinctIdFor(session), 'rescue_mode_changed', { mode }, id);
+  revalidatePath(`/dashboard/${id}/settings`);
+}
+
+/** Turn re-runs on or off for one workflow. The workflow must belong to this installation and have no blockers. */
+export async function saveWorkflowRescue(id: number, workflowId: number, on: boolean): Promise<void> {
+  const session = await requireInstallation(id, `/dashboard/${id}/settings`);
+  const [inst] = await installationsFor(db, [id]);
+  if (on && (!inst || !isPaid(inst.plan))) return;
+  if (await setWorkflowRescue(db, id, workflowId, on)) await captureServerEvent(distinctIdFor(session), 'rescue_workflow_toggled', { on, workflow_id: workflowId }, id);
+  revalidatePath(`/dashboard/${id}/settings`);
 }

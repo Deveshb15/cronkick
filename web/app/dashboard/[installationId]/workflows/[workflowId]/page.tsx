@@ -11,7 +11,7 @@ import { LiveStrip } from '@/components/live-strip';
 import { AlertHint, Code, GapNotice, StatusDot, StatusKey, Ticks, VERDICT_DOT, VERDICT_WORD } from '@/components/ui';
 import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { dailyCells, dayBounds, knownZone, retainedFrom, MAX_ROWS, nextRuns, RANGES, rangesFor, rangeStats, recentSlots, workflowHistory, type Flag, type HistoryFilter, type Range, type Schedule } from '@/lib/data';
+import { dailyCells, dayBounds, knownZone, retainedFrom, MAX_ROWS, nextRuns, RANGES, rangesFor, rangeStats, recentSlots, rescueBySlot, workflowHistory, type Flag, type HistoryFilter, type Range, type Schedule } from '@/lib/data';
 import { nextPlan } from '@/lib/format';
 import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 import { PLANS } from '../../../../../../src/plans.ts';
@@ -56,6 +56,7 @@ export default async function WorkflowPage({ params, searchParams }: {
   // A day past the plan's history, or in the future, isn't "nothing due"; it's not shown, so ignore it.
   const bounds = asked && asked.from < now && asked.until > (await retainedFrom(db, id, now)) ? asked : null;
   const [h, strips] = await Promise.all([workflowHistory(db, id, wid, now, filter, before, after, bounds ?? undefined), recentSlots(db, id, now, 96, wid)]);
+  const rescued = h ? await rescueBySlot(db, id, h.slots.map((s) => s.id)) : {};
   if (!h) notFound();
   // Analysis range: 7 days unless asked; Free can't ask past its 7. Daily cells cover at least a week.
   const ranges = rangesFor(h.plan ?? 'free');
@@ -231,7 +232,7 @@ export default async function WorkflowPage({ params, searchParams }: {
           </div>
           <div className="mt-2">
             {h.slots.length
-              ? <HistoryTable rows={h.slots} gaps={filter ? [] : gaps} newerEdge={h.newerEdge} />
+              ? <HistoryTable rows={h.slots} gaps={filter ? [] : gaps} newerEdge={h.newerEdge} rescued={rescued} />
               : <p className="rounded-xl px-4 py-8 text-center text-sm/6 text-zinc-400 inset-ring inset-ring-white/10">
                   {filter ? `No runs match this filter${day ? ' on this day' : ''}.` : day && !before && !after ? (gaps.length ? 'No runs were recorded that day; Cronkick had a coverage gap, so runs due then may not have been sent.' : 'Nothing was due that day.') : before || after ? <>Nothing on this page. <Link href={link({})} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Back to the latest runs</Link></> : 'No runs match this filter.'}
                 </p>}

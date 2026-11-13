@@ -3,7 +3,7 @@ import { ChevronRightIcon } from '@heroicons/react/16/solid';
 import { Fragment, useEffect, useState } from 'react';
 import type { CoverageGap, SlotDisplay, SlotView } from '@/lib/data';
 import { fmtDelay, fmtDuration, fmtSpan, gapAt, receiptLine } from '@/lib/live';
-import { JobResult, SlotPill, StatusDot, slotHelp } from './ui';
+import { Badge, JobResult, SlotPill, StatusDot, slotHelp } from './ui';
 import { Time, TimeRange, useArrivals } from './live';
 
 export type HistoryRow = SlotView & {
@@ -66,7 +66,7 @@ function dayOf(iso: string, local: boolean): string {
  * annotation row where it falls (never a made-up run). A row opens to show every step; `#slot-<id>` in the URL opens
  * and scrolls to that row (the strip's "Open in history" uses it).
  */
-export function HistoryTable({ rows, gaps = [], newerEdge = null }: { rows: HistoryRow[]; gaps?: CoverageGap[]; newerEdge?: string | null }) {
+export function HistoryTable({ rows, gaps = [], newerEdge = null, rescued = {} }: { rows: HistoryRow[]; gaps?: CoverageGap[]; newerEdge?: string | null; rescued?: Record<number, string> }) {
   const [open, setOpen] = useState<number | null>(null);
   const [local, setLocal] = useState(false);
   const fresh = useArrivals(rows.map((r) => r.id));
@@ -131,7 +131,7 @@ export function HistoryTable({ rows, gaps = [], newerEdge = null }: { rows: Hist
                     <span className="sr-only">Steps for </span><Time iso={s.due} clock className="text-zinc-100 tabular-nums" />
                   </button>
                 </td>
-                <td className={`max-sm:order-2 max-sm:justify-self-end ${cell}`}><Status s={s} /></td>
+                <td className={`max-sm:order-2 max-sm:justify-self-end ${cell}`}><Status s={s} />{rescued[s.id] && <span className="mt-1 block"><Badge tone="blue">{rescued[s.id]}</Badge></span>}</td>
                 <td className={`font-mono text-[13px]/5 tabular-nums max-sm:order-3 ${cell} ${s.tick === 'late' ? 'text-orange-300' : 'text-zinc-300'}`}>
                   <span className="font-sans text-zinc-400 sm:hidden">Sent </span>{fmtDelay(s.sendDelayMs)}{s.tick === 'late' && <span className="font-sans"> late</span>}
                 </td>

@@ -15,6 +15,7 @@ export const DOCS = [
     { href: '/docs/checks', title: 'Compatibility checks', description: 'What Cronkick checks before it turns a workflow on, and how to fix each one.' },
     { href: '/docs/timing', title: 'Timing and retries', description: 'How fast runs are sent, what happens when GitHub or Cronkick fails, and why unclear sends aren’t repeated.' },
     { href: '/docs/statuses', title: 'Statuses', description: 'What each status on your dashboard means.' },
+    { href: '/docs/rescue', title: 'Rescue', description: 'How Cronkick tells a run GitHub broke from one your code failed, and the exact GitHub messages it looks for.' },
   ] },
   { group: 'Account', items: [
     { href: '/docs/plans', title: 'Plans and limits', description: 'What Free, Pro and Team include, how billing works, and what happens when you go over a limit.' },

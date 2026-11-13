@@ -1,13 +1,14 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { AlertEmailForm } from '@/components/alert-email-form';
 import { Button, ButtonLink } from '@/components/ui';
 import { canSee, requireInstallation } from '@/lib/access';
 import { billingEnabled } from '@/lib/billing';
 import { db } from '@/lib/db';
-import { accountHealth, billingOf, canBuy, installationsFor, type Billing } from '@/lib/data';
+import { accountHealth, billingOf, canBuy, installationsFor, rescueSettings, rescueWorkflows, type Billing } from '@/lib/data';
 import { manageReposUrl } from '@/lib/format';
 import { isPaid, paidPlanFor, PLANS } from '../../../../../src/plans.ts';
-import { openBillingPortal, saveAlertEmail, startCheckout } from './actions';
+import { openBillingPortal, saveAlertEmail, saveRescueMode, saveWorkflowRescue, startCheckout } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,10 @@ export default async function Settings({ params, searchParams }: { params: Promi
   const inst = (await installationsFor(db, s.installs)).find((i) => i.id === id)!;
   const used = (await accountHealth(db, [id], new Date())).get(id)!.schedules;
   const billing = await billingOf(db, id);
+  const rescue = await rescueSettings(db, id);
+  // Re-run once exists only while the server has re-runs switched on (RESCUE_RERUN, the same env file as the worker).
+  const rerunOffered = process.env.RESCUE_RERUN === 'on';
+  const rescueFlows = rerunOffered && isPaid(inst.plan) ? await rescueWorkflows(db, id) : [];
   // Back from checkout: the plan and status come from Dodo's webhooks. The URL's status (Dodo appends "active" or
   // "failed", but anyone can edit it) only picks the wording while the webhook is still on its way.
   const sp = await searchParams;
@@ -57,6 +62,7 @@ export default async function Settings({ params, searchParams }: { params: Promi
     ['Fastest', every(PLANS.free.floorMinutes), every(paid.floorMinutes)],
     ['History', `${PLANS.free.historyDays} days`, `${paid.historyDays} days`],
     ['Email alerts', 'plan limit only', 'missed and failed runs'],
+    ['Rescue', 'weekly report', 'weekly report, can re-run once'],
   ];
   const line = billingLine(billing);
   return (
@@ -104,6 +110,56 @@ export default async function Settings({ params, searchParams }: { params: Promi
           <tbody className="divide-y divide-white/5">{rows.map(([k, f, p]) => <tr key={k}><td className="py-2 text-zinc-400">{k}</td><td className={free ? '' : 'text-zinc-400'}>{f}</td><td className={free ? 'text-zinc-400' : ''}>{p}</td></tr>)}</tbody>
         </table>
         </details>
+      </section>
+
+      <section className={card}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base/7 font-semibold">Rescue</h2>
+            <p className="text-sm/6 text-zinc-400">When a run fails, Cronkick reads its job list and tells you when GitHub’s infrastructure, not your code, broke it: a weekly email to your alert address and the Rescue page. It stores only GitHub’s own error text, never logs. <Link href="/docs/rescue" className="font-medium text-white underline decoration-white/30 hover:decoration-white">How it decides</Link></p>
+          </div>
+          <ButtonLink href={`/dashboard/${id}/rescue`}>See runs</ButtonLink>
+        </div>
+        <p className="mt-3 text-[13px]/5 text-zinc-400">
+          {rescue.checksRead
+            ? <>Checks: read approved ✓</>
+            : <>To read GitHub’s own error message on a failed job, Rescue needs the Checks: read permission. Without it, runs that never got a runner show as “probably GitHub”. <a target="_blank" rel="noreferrer" href={manageReposUrl(inst)} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Approve it on GitHub ↗</a></>}
+        </p>
+        <form action={saveRescueMode.bind(null, id)} className="mt-4">
+          <fieldset className="space-y-2">
+            <legend className="sr-only">Rescue mode</legend>
+            {([
+              ['off', 'Off', 'Don’t read failed runs.', false],
+              ['shadow', 'Report only', 'Classify failed runs and email a weekly summary. Never re-runs anything.', false],
+              ...(rerunOffered ? [['rerun', 'Re-run once', free ? `Part of ${paid.label}.` : 'Also re-run, once, runs Cronkick started that GitHub never gave a runner, on the workflows you turn on below.', free]] as const : []),
+            ] as const).map(([value, label, help, disabled]) => (
+              <label key={value} className={`flex items-start gap-x-3 text-sm/6 ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
+                <input type="radio" name="mode" value={value} disabled={disabled} defaultChecked={rescue.mode === value} className="mt-1.5 accent-brand-500" />
+                <span><span className="font-medium text-white">{label}</span> <span className="text-zinc-400">· {help}</span></span>
+              </label>
+            ))}
+          </fieldset>
+          <Button type="submit" className="mt-4">Save</Button>
+        </form>
+        {rescueFlows.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-sm/6 font-medium">Workflows Rescue may re-run</h3>
+            <p className="mt-1 text-[13px]/5 text-zinc-400">Rescue may re-run this workflow’s failed jobs and every job that depends on them, at the same commit, once. Turn this on only if every job in this workflow is safe to run twice.</p>
+            <ul role="list" className="mt-3 divide-y divide-white/5 rounded-xl inset-ring inset-ring-white/10">
+              {rescueFlows.map((w) => (
+                <li key={w.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm/6">
+                  <div className="min-w-0">
+                    <p className="font-medium">{w.name} <span className="font-normal text-zinc-400">· {w.repo.split('/')[1]}</span></p>
+                    {w.blockers.length > 0 && <p className="text-[13px]/5 text-orange-300">{w.blockers.join(' ')}</p>}
+                  </div>
+                  {w.blockers.length && !w.on ? <span className="text-[13px]/5 text-zinc-500">Can’t be turned on</span> : (
+                    <form action={saveWorkflowRescue.bind(null, id, w.id, !w.on)}><Button type="submit" size="sm">{w.on ? 'Turn off' : 'Turn on'}</Button></form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className={card}>

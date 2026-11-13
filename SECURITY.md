@@ -15,8 +15,11 @@ Cronkick is a GitHub App with these repository permissions, on the repositories 
 
 | Permission | Why |
 |---|---|
+| Checks: read | Rescue: read GitHub's own error message on a failed job (optional; Rescue works without it) |
 | Contents: read | Read workflow files to find `# cronkick:` markers |
 | Actions: read and write | Start workflows (`workflow_dispatch`) at their scheduled time; read runs |
 | Metadata: read | Required by GitHub for every app |
+
+Rescue reads the metadata of failed workflow runs in those repositories, including runs Cronkick didn't start (job and step names, results, runner labels, times), to tell when GitHub's infrastructure broke a run. It stores only its verdict, the job names and the one GitHub error string that matched (at most 300 characters); it never downloads or stores logs. It can be turned off per account in Settings.
 
 [cronkick.xyz/docs/security](https://cronkick.xyz/docs/security) lists every GitHub API call Cronkick makes and what each permission would allow.

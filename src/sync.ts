@@ -6,11 +6,13 @@ import { refreshSlots } from './maintenance.ts';
 import { sendLimitNotice } from './alerts.ts';
 import type { RepoInfo } from './github.ts';
 
-export async function upsertInstallation(deps: Deps, inst: { id: number; account: { login: string; type: string } }) {
+export async function upsertInstallation(deps: Deps, inst: { id: number; account: { login: string; type: string }; permissions?: Record<string, string> }) {
+  // Checks: read lets Rescue read GitHub's own error text. A payload without permissions leaves it as it was.
+  const checks = inst.permissions ? ['read', 'write'].includes(inst.permissions.checks) : null;
   await deps.db.query(
-    `INSERT INTO installations (id, account_login, account_type) VALUES ($1, $2, $3)
-     ON CONFLICT (id) DO UPDATE SET account_login = $2, account_type = $3, removed = false`,
-    [inst.id, inst.account.login, inst.account.type],
+    `INSERT INTO installations (id, account_login, account_type, checks_read) VALUES ($1, $2, $3, coalesce($4, false))
+     ON CONFLICT (id) DO UPDATE SET account_login = $2, account_type = $3, removed = false, checks_read = coalesce($4, installations.checks_read)`,
+    [inst.id, inst.account.login, inst.account.type, checks],
   );
 }
 
@@ -63,6 +65,7 @@ export async function syncRepo(deps: Deps, installationId: number, repo: RepoInf
         `DELETE FROM schedules WHERE workflow_id = $1 AND NOT ((cron, tz) IN (SELECT * FROM unnest($2::text[], $3::text[])))`,
         [w.id, markers.map((m) => m.cron), markers.map((m) => m.tz)],
       );
+      await c.query('UPDATE workflows SET rescue_blockers = $2 WHERE id = $1', [w.id, JSON.stringify(w.check?.rescueBlockers ?? [])]);
     }
     // Workflows GitHub no longer lists were deleted or renamed.
     await c.query(`UPDATE workflows SET present = false WHERE repo_id = $1 AND NOT (id = ANY($2))`, [repo.id, found.map((w) => w.id)]);

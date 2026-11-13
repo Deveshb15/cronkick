@@ -7,7 +7,8 @@ import { githubApp, realGitHub } from './github.ts';
 import { resendMailer } from './mailer.ts';
 import { dispatchTick, drain } from './dispatcher.ts';
 import { planAhead, settle } from './maintenance.ts';
-import { sendGapAlerts, sendLimitNotices, sendSlotAlerts } from './alerts.ts';
+import { sendGapAlerts, sendLimitNotices, sendRescueDigests, sendRescueRerunAlerts, sendSlotAlerts } from './alerts.ts';
+import { reconcileRescue, rescueFollowUp, rescueSend, rescueTick } from './rescue.ts';
 import { reconcileAll } from './sync.ts';
 import { collectProbes } from './probe/collector.ts';
 import { watchSchedules } from './schedule-watch.ts';
@@ -27,7 +28,7 @@ const db = createDb(cfg.databaseUrl);
 }
 
 const gh = githubApp(cfg);
-const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl };
+const deps: Deps = { db, gh: realGitHub(gh), mailer: resendMailer(cfg.resendApiKey, cfg.mailFrom), now: () => new Date(), baseUrl: cfg.baseUrl, rescueRerun: cfg.rescueRerun };
 const app = webApp(deps, { webhookSecret: cfg.webhookSecret, billing: { secret: cfg.dodoWebhookSecret, products: dodoProducts() } });
 const server = serve({ fetch: app.fetch, port: cfg.port }, (i) => console.log(`cronkick listening on :${i.port}`));
 emitPostHogWorkerLog('worker started', { port: cfg.port });
@@ -47,6 +48,7 @@ function loop(name: string, ms: number, fn: () => Promise<unknown>): Promise<voi
 let lastReconcile = 0;
 let lastProbe = 0;
 let lastWatch = 0;
+let lastRescueSync = 0;
 const loops = [
   loop('dispatch', 1000, () => dispatchTick(deps)),
   loop('maintenance', 60_000, async () => {
@@ -56,6 +58,14 @@ const loops = [
     await sendSlotAlerts(deps);
     await sendGapAlerts(deps);
     await sendLimitNotices(deps);
+    await sendRescueDigests(deps);
+    await sendRescueRerunAlerts(deps);
+  }),
+  // Rescue reads GitHub for each failed run; on its own loop it never holds up dispatch or planning.
+  loop('rescue', 15_000, async () => {
+    await rescueTick(deps);
+    await rescueSend(deps);
+    await rescueFollowUp(deps);
   }),
   // Probes and the daily reconcile call GitHub and can be slow; on their own loop they never hold up planning.
   loop('background', 60_000, async () => {
@@ -70,6 +80,10 @@ const loops = [
     if (now.getTime() - lastWatch > 60 * 60_000) {
       lastWatch = now.getTime();
       await watchSchedules(deps, now);
+    }
+    if (now.getTime() - lastRescueSync > 60 * 60_000) {
+      lastRescueSync = now.getTime();
+      await reconcileRescue(deps, now);
     }
     if (now.getTime() - lastReconcile > 24 * 60 * 60_000) {
       lastReconcile = now.getTime();

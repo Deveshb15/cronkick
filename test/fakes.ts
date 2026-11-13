@@ -1,6 +1,6 @@
 import type { Deps } from '../src/deps.ts';
 import type { Db } from '../src/db.ts';
-import { DispatchTimeout, type DispatchResult, type GitHub, type RepoInfo, type WorkflowInfo } from '../src/github.ts';
+import { DispatchTimeout, RerunTimeout, type Annotation, type DispatchResult, type FailedRun, type GitHub, type Job, type RepoInfo, type WorkflowInfo } from '../src/github.ts';
 import type { Mail } from '../src/mailer.ts';
 
 export class FakeGitHub implements GitHub {
@@ -24,11 +24,52 @@ export class FakeGitHub implements GitHub {
     return { runs, complete };
   }
 
-  installations: { id: number; account: { login: string; type: string } }[] = [];
+  installations: { id: number; account: { login: string; type: string }; permissions?: Record<string, string> }[] = [];
   async listInstallations() { return this.installations; }
   async listRepos() { return this.repos; }
   async listWorkflows(_: number, repo: string) { return (this.workflows.get(repo) ?? []).map((w) => ({ state: 'active', ...w })); }
   async getFile(_: number, repo: string, path: string) { return this.files.get(`${repo}:${path}`) ?? null; }
+  /** Rescue reads. Jobs per "runId:attempt" (an Error entry is thrown); annotations per check run id (null = no Checks: read). */
+  jobs = new Map<string, Job[] | Error>();
+  annotations = new Map<number, Annotation[] | null>();
+  failedRuns = new Map<string, FailedRun[]>(); // repo -> runs
+  rateRemaining: number | null = 5000;
+  jobReads: string[] = [];
+  annotationReads: number[] = [];
+  runReads: number[] = [];
+  failedRunReads: string[] = [];
+  async listJobs(_: number, __: string, runId: number, attempt: number) {
+    this.jobReads.push(`${runId}:${attempt}`);
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
+    const j = this.jobs.get(`${runId}:${attempt}`) ?? [];
+    if (j instanceof Error) throw j;
+    return { jobs: j, rateRemaining: this.rateRemaining };
+  }
+  async listAnnotations(_: number, __: string, checkRunId: number) {
+    this.annotationReads.push(checkRunId);
+    return this.annotations.has(checkRunId) ? this.annotations.get(checkRunId)! : [];
+  }
+  async getRun(_: number, __: string, runId: number) {
+    this.runReads.push(runId);
+    return this.runs.get(runId) ?? { status: 'completed', conclusion: 'failure', runAttempt: 1, headSha: 'abc' };
+  }
+  async listFailedRuns(_: number, repo: string) {
+    this.failedRunReads.push(repo);
+    return this.failedRuns.get(repo) ?? [];
+  }
+  /** Re-run POSTs sent, and responses to return in order (falls back to 201; a RerunTimeout entry is thrown). */
+  reruns: { repo: string; runId: number }[] = [];
+  rerunResponses: (DispatchResult | RerunTimeout)[] = [];
+  incident = false;
+  /** getRun answers per run id; falls back to completed, attempt 1. */
+  runs = new Map<number, { status: string; conclusion: string | null; runAttempt: number; headSha: string }>();
+  async rerunFailedJobs(_: number, repo: string, runId: number) {
+    this.reruns.push({ repo, runId });
+    const r = this.rerunResponses.shift() ?? { status: 201 };
+    if (r instanceof RerunTimeout) throw r;
+    return r;
+  }
+  async actionsIncident() { return this.incident; }
   async dispatch(_: number, repo: string, workflowId: number, ref: string) {
     this.dispatches.push({ repo, workflowId, ref });
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));

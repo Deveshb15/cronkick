@@ -3,18 +3,20 @@ import type { Db } from './db.ts';
 export type PlanName = 'free' | 'pro' | 'team';
 type Plan = {
   label: string; repos: number; schedules: number; floorMinutes: number; historyDays: number;
+  /** Rescue re-runs a run GitHub broke (v1c). Every plan gets the report. */
+  rescue: boolean;
   /** USD a month and a year; null for Free. */
   price: { monthly: number; yearly: number } | null;
   /** The GitHub account type that can buy it (installations.account_type); null for Free. */
   for: 'User' | 'Organization' | null;
 };
 export const PLANS: Record<PlanName, Plan> = {
-  free: { label: 'Free', repos: Infinity, schedules: 3, floorMinutes: 15, historyDays: 7, price: null, for: null },
-  pro: { label: 'Pro', repos: Infinity, schedules: 50, floorMinutes: 5, historyDays: 90, price: { monthly: 5, yearly: 50 }, for: 'User' },
+  free: { label: 'Free', repos: Infinity, schedules: 3, floorMinutes: 15, historyDays: 7, rescue: false, price: null, for: null },
+  pro: { label: 'Pro', repos: Infinity, schedules: 50, floorMinutes: 5, historyDays: 90, rescue: true, price: { monthly: 5, yearly: 50 }, for: 'User' },
   // ponytail: Team allows 200 schedules every minute, but each send is one GitHub API call and an installation gets
   // about 5,000 an hour, so ~80 one-minute schedules is the real ceiling (documented in docs/plans). Enforce a
   // per-installation sends-per-hour budget in applyLimits when a Team account gets near it.
-  team: { label: 'Team', repos: Infinity, schedules: 200, floorMinutes: 1, historyDays: 400, price: { monthly: 19, yearly: 190 }, for: 'Organization' },
+  team: { label: 'Team', repos: Infinity, schedules: 200, floorMinutes: 1, historyDays: 400, rescue: true, price: { monthly: 19, yearly: 190 }, for: 'Organization' },
 };
 
 export const isPaid = (plan: PlanName) => plan !== 'free';

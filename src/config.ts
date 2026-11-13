@@ -47,6 +47,8 @@ export function loadConfig() {
     probeToken: process.env.PROBE_TOKEN ?? '',
     // Optional until billing is set up; the Dodo webhook answers 503 without it.
     dodoWebhookSecret: process.env.DODO_WEBHOOK_SECRET ?? '',
+    // Rescue re-runs stay off everywhere until this is set; the web server reads it too, to offer the option.
+    rescueRerun: process.env.RESCUE_RERUN === 'on',
   };
 }
 export type Config = ReturnType<typeof loadConfig>;

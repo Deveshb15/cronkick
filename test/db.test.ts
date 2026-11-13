@@ -11,7 +11,7 @@ afterAll(() => db.end());
 test('migrate is idempotent', async () => {
   expect(await migrate(db)).toEqual([]);
   const { rows } = await db.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public'`);
-  expect(rows[0].n).toBe(15); // 14 tables + schema_migrations
+  expect(rows[0].n).toBe(16); // 15 tables + schema_migrations
   expect((await db.query('SELECT planned_until FROM planner')).rows).toEqual([{ planned_until: null }]);
   expect((await db.query('SELECT count(*)::int AS n FROM coverage_gaps')).rows[0].n).toBe(0);
   expect((await db.query('SELECT count(*)::int AS n FROM probe_health')).rows[0].n).toBe(0);

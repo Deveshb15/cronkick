@@ -23,7 +23,7 @@ const manifest = {
   callback_urls: [`${base}/callback`],
   public: true,
   request_oauth_on_install: false,
-  default_permissions: { actions: 'write', contents: 'read', metadata: 'read' },
+  default_permissions: { actions: 'write', checks: 'read', contents: 'read', metadata: 'read' }, // checks: Rescue reads GitHub's error annotations
   default_events: ['push', 'workflow_run'],
 };
 const target = org ? `https://github.com/organizations/${org}/settings/apps/new` : 'https://github.com/settings/apps/new';

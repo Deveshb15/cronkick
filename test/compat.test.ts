@@ -11,7 +11,7 @@ test('clean workflow has no flags', () => {
 });
 
 test('no markers and no schedule: nothing to do, no flags', () => {
-  expect(checkWorkflow(`on: push\n${steps}`, 5)).toEqual({ markers: [], flags: [], suggestedDiff: null });
+  expect(checkWorkflow(`on: push\n${steps}`, 5)).toEqual({ markers: [], flags: [], suggestedDiff: null, rescueBlockers: [] });
 });
 
 test('marker without workflow_dispatch is flagged', () => {
@@ -64,4 +64,13 @@ test('an unresolved alias error does not store the alias name', () => {
   const { flags } = checkWorkflow('on:\n  workflow_dispatch:\njobs: *PRIVATE_ALIAS\n', 5);
   expect(flags[0].message).toMatch(/isn't valid YAML: Unresolved alias/);
   expect(JSON.stringify(flags)).not.toContain('PRIVATE_ALIAS');
+});
+
+test('rescue blockers: environments, reusable workflows and pull_request_target; none for a plain workflow', () => {
+  const blockers = (text: string) => checkWorkflow(text, 5).rescueBlockers;
+  expect(blockers('on:\n  workflow_dispatch:\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n')).toEqual([]);
+  expect(blockers('on:\n  workflow_dispatch:\njobs:\n  deploy:\n    environment: production\n    runs-on: ubuntu-latest\n')).toEqual([expect.stringMatching(/Job "deploy" uses an environment/)]);
+  expect(blockers('on:\n  workflow_dispatch:\njobs:\n  call:\n    uses: acme/ci/.github/workflows/build.yml@main\n')).toEqual([expect.stringMatching(/Job "call" calls a reusable workflow/)]);
+  expect(blockers('on:\n  pull_request_target:\n  workflow_dispatch:\njobs: {}\n')).toEqual([expect.stringMatching(/pull_request_target/)]);
+  expect(blockers('on: [unclosed\n')).toEqual([expect.stringMatching(/isn’t valid YAML/)]);
 });

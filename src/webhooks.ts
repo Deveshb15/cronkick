@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Deps } from './deps.ts';
 import { linkRun } from './runs.ts';
+import { onRunCompleted } from './rescue.ts';
 import { identifyInstallation, track } from './posthog.ts';
 import { recordScheduledRun } from './schedule-watch.ts';
 import { pauseRepos, setInstallationState, syncInstallation, syncRepo, upsertInstallation } from './sync.ts';
@@ -53,6 +54,8 @@ export async function handleEvent(deps: Deps, event: string, p: any): Promise<vo
       if (p.workflow_run?.event === 'schedule') track('github_scheduled_run_seen', installationId);
       if (p.workflow_run?.event === 'schedule') await recordScheduledRun(deps.db, p.workflow_run, deps.now());
       else await linkRun(deps.db, p.workflow_run);
+      // After linkRun, so a run it just matched to a slot is queued with that slot. Database only: no GitHub calls here.
+      if (p.action === 'completed' && installationId && p.repository?.id) await onRunCompleted(deps.db, installationId, p.repository.id, p.workflow_run, deps.now());
       return;
   }
 }

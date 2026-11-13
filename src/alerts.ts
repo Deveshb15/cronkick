@@ -1,6 +1,7 @@
 import type { Deps } from './deps.ts';
 import type { Mail } from './mailer.ts';
-import { track } from './posthog.ts';
+import { PLANS, type PlanName } from './plans.ts';
+import { emitPostHogWorkerLog, track } from './posthog.ts';
 
 async function recipient(deps: Deps, installationId: number): Promise<string | null> {
   const { rows } = await deps.db.query('SELECT alert_email FROM installations WHERE id = $1', [installationId]);
@@ -52,7 +53,7 @@ export async function sendLimitNotices(deps: Deps): Promise<void> {
   for (const r of rows) await sendLimitNotice(deps, r.id, r.paused).catch((e) => console.error('limit notice failed; will retry', e));
 }
 
-type AlertRow = { id: number; installation_id: number; state: string; conclusion: string | null; due_at: Date; run_url: string | null; full_name: string; name: string; workflow_id: number; response_note: string | null };
+type AlertRow = { id: number; installation_id: number; state: string; conclusion: string | null; due_at: Date; run_url: string | null; full_name: string; name: string; workflow_id: number; response_note: string | null; no_runner: boolean };
 
 /**
  * Email Pro accounts about unknown/rejected/expired slots and failed runs (R13). Deduped by slot + kind,
@@ -62,7 +63,8 @@ type AlertRow = { id: number; installation_id: number; state: string; conclusion
 export async function sendSlotAlerts(deps: Deps): Promise<number> {
   const { rows } = await deps.db.query<AlertRow & { kind: string }>(
     `SELECT s.id, s.installation_id, s.state, s.conclusion, s.due_at, s.run_url, s.workflow_id, s.response_note, r.full_name, w.name,
-            CASE WHEN s.state IN ('unknown', 'rejected', 'expired') THEN s.state ELSE 'run_failed' END AS kind
+            CASE WHEN s.state IN ('unknown', 'rejected', 'expired') THEN s.state ELSE 'run_failed' END AS kind,
+            EXISTS (SELECT 1 FROM rescue_runs x WHERE x.run_id = s.run_id AND x.verdict = 'github_broke' AND x.jobs @> '[{"class":"no_runner"}]') AS no_runner
        FROM slots s JOIN installations i ON i.id = s.installation_id
        JOIN repos r ON r.id = s.repo_id JOIN workflows w ON w.id = s.workflow_id
       WHERE i.plan <> 'free' AND NOT i.removed AND i.alert_email IS NOT NULL
@@ -70,6 +72,8 @@ export async function sendSlotAlerts(deps: Deps): Promise<number> {
         AND (s.state IN ('unknown', 'rejected') OR (s.state = 'expired' AND s.attempts > 0) OR s.conclusion IN ('failure', 'timed_out', 'startup_failure'))
         AND NOT EXISTS (SELECT 1 FROM alerts_sent a WHERE a.key =
               (CASE WHEN s.state IN ('unknown', 'rejected', 'expired') THEN s.state ELSE 'run_failed' END) || ':' || s.id)
+        -- Rescue classifies a failed run within seconds; wait for it (at most 10 min) so the one email says whose fault it was.
+        AND NOT EXISTS (SELECT 1 FROM rescue_runs x WHERE x.run_id = s.run_id AND x.state = 'queued' AND x.created_at > $1::timestamptz - interval '10 minutes')
       LIMIT 100`,
     [deps.now()],
   );
@@ -81,7 +85,7 @@ export async function sendSlotAlerts(deps: Deps): Promise<number> {
       unknown: `We sent the trigger, but couldn't confirm that GitHub received it. We did not retry, to avoid a double run.${r.response_note ? `\nDetails: ${r.response_note}` : ''}`,
       rejected: `GitHub refused the trigger: ${r.response_note ?? 'no reason given'}. Check the workflow and the App's access; Cronkick won't retry.`,
       expired: `GitHub kept failing or throttling the trigger until its deadline, so Cronkick gave up rather than send it late.${r.response_note ? `\nLast response: ${r.response_note}` : ''}`,
-      run_failed: `The run we triggered finished with "${r.conclusion}".${r.run_url ? `\nRun: ${r.run_url}` : ''}`,
+      run_failed: `${r.no_runner ? 'GitHub never gave this run a runner (not your code).' : `The run we triggered finished with "${r.conclusion}".`}${r.run_url ? `\nRun: ${r.run_url}` : ''}`,
     }[r.kind];
     if (await sendOnce(deps, `${r.kind}:${r.id}`, {
       to,
@@ -174,6 +178,114 @@ export async function sendGapAlerts(deps: Deps): Promise<number> {
       to: r.alert_email,
       subject: `Cronkick: scheduler down from ${from} to ${to} (UTC)`,
       text: `Cronkick's scheduler was down from ${from} to ${to} (UTC). Runs due then may not have been sent; any that were sent are listed in your dashboard's history.\n\nDashboard: ${deps.baseUrl}/dashboard/${r.installation_id}`,
+    })) sent++;
+  }
+  return sent;
+}
+
+const DAY = 86_400_000;
+
+/** Monday 00:00 UTC of the ISO week holding `d`, and its label ("2026-W46"). */
+export function isoWeek(d: Date): { start: Date; label: string } {
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7)));
+  const thursday = new Date(start.getTime() + 3 * DAY); // the ISO year is the one this week's Thursday falls in
+  const year = thursday.getUTCFullYear();
+  return { start, label: `${year}-W${Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / (7 * DAY)) + 1}` };
+}
+
+type DigestRow = { installation_id: number; alert_email: string; plan: PlanName; verdict: string; jobs: { class: string }[] | null; slot_id: number | null; workflow_name: string; full_name: string };
+const runs = (n: number) => `${n} run${n === 1 ? '' : 's'}`;
+
+/**
+ * Weekly, every plan: "GitHub broke N of your runs". Reports the ISO week that just ended, once per installation (the
+ * alerts_sent key is claimed before sending, so two servers send it once), and only when something was GitHub's side.
+ */
+export async function sendRescueDigests(deps: Deps): Promise<number> {
+  const now = deps.now();
+  const thisWeek = isoWeek(now).start;
+  // An hour into the new week, so last week's final runs are classified first.
+  if (now.getTime() - thisWeek.getTime() < 60 * 60_000) return 0;
+  const { start: from, label } = isoWeek(new Date(thisWeek.getTime() - DAY));
+  // ponytail: re-reads last week's rows every pass for accounts with nothing to report; keep a "digest checked" marker if this gets slow.
+  const { rows } = await deps.db.query<DigestRow>(
+    `SELECT x.installation_id, i.alert_email, i.plan, x.verdict, x.jobs, x.slot_id, x.workflow_name, r.full_name
+       FROM rescue_runs x JOIN installations i ON i.id = x.installation_id JOIN repos r ON r.id = x.repo_id
+      WHERE i.alert_email IS NOT NULL AND NOT i.removed AND x.verdict IS NOT NULL AND x.completed_at >= $1 AND x.completed_at < $2
+        AND NOT EXISTS (SELECT 1 FROM alerts_sent a WHERE a.key = 'digest:' || x.installation_id || ':' || $3)`,
+    [from, thisWeek, label],
+  );
+  const byInstall = new Map<number, DigestRow[]>();
+  for (const r of rows) byInstall.set(r.installation_id, [...(byInstall.get(r.installation_id) ?? []), r]);
+  let sent = 0;
+  for (const [id, list] of byInstall) {
+    const n = (v: string) => list.filter((r) => r.verdict === v).length;
+    const broke = list.filter((r) => r.verdict === 'github_broke');
+    const noRunner = broke.filter((r) => r.jobs?.some((j) => j.class === 'no_runner')).length;
+    const [notStarted, probably] = [n('not_started'), n('probably_github')];
+    const counted = broke.length + notStarted + probably;
+    if (!counted) continue;
+    const affected = new Map<string, number>();
+    for (const r of list) {
+      if (r.slot_id === null || !['github_broke', 'not_started', 'probably_github'].includes(r.verdict)) continue;
+      const k = `${r.full_name} · ${r.workflow_name}`;
+      affected.set(k, (affected.get(k) ?? 0) + 1);
+    }
+    const stuck = (await deps.db.query(
+      `SELECT count(*)::int AS n FROM slots WHERE installation_id = $1 AND state = 'accepted' AND fired_at >= $2 AND fired_at < $3
+          AND fired_at < $4::timestamptz - interval '60 minutes' AND run_started_at IS NULL AND conclusion IS NULL`,
+      [id, from, thisWeek, now],
+    )).rows[0].n as number;
+    const [billing, selfHosted] = [n('billing'), n('self_hosted')];
+    const lines = [
+      `Week of ${from.toISOString().slice(0, 10)} to ${new Date(thisWeek.getTime() - DAY).toISOString().slice(0, 10)} (UTC).`,
+      '',
+      ...(broke.length ? [`GitHub broke ${runs(broke.length)}:`,
+        ...(noRunner ? [`- ${noRunner} never got a runner`] : []),
+        ...(broke.length - noRunner ? [`- ${broke.length - noRunner} hit a GitHub service error while setting up (checkout, cache or artifacts)`] : [])] : []),
+      ...(notStarted || probably ? [broke.length ? 'Also likely on GitHub’s side:' : 'Likely on GitHub’s side:',
+        ...(notStarted ? [`- ${notStarted} didn't start, likely GitHub`] : []),
+        ...(probably ? [`- ${probably} probably GitHub (the runner was lost, or GitHub gave up finding one)`] : [])] : []),
+      '',
+      affected.size ? `Cronkick schedules affected: ${[...affected].map(([k, c]) => `${k} (${c})`).join(', ')}.` : 'None of these were runs Cronkick started.',
+      ...(stuck ? [`${runs(stuck)} Cronkick sent over an hour ago never started on GitHub (stuck in its queue).`] : []),
+      ...(billing || selfHosted ? [`Not counted: ${runs(billing)} blocked by a GitHub billing lock, ${runs(selfHosted)} on self-hosted runners.`] : []),
+      ...(PLANS[list[0].plan].rescue ? [] : ['On Pro and Team, Rescue can re-run runs like these once.']),
+      '',
+      `See each run: ${deps.baseUrl}/dashboard/${id}/rescue?utm_source=digest`,
+    ];
+    if (await sendOnce(deps, `digest:${id}:${label}`, {
+      to: list[0].alert_email,
+      subject: broke.length ? `GitHub broke ${broke.length} of your runs this week` : `${runs(counted)} probably failed on GitHub’s side this week`,
+      text: lines.join('\n'),
+    })) {
+      sent++;
+      emitPostHogWorkerLog('rescue digest sent', { n: counted });
+    }
+  }
+  return sent;
+}
+
+/**
+ * Paid accounts: one email per Rescue re-run (key rescue:<id>), once attempt 2 has finished, or after an hour with the
+ * result still pending.
+ */
+export async function sendRescueRerunAlerts(deps: Deps): Promise<number> {
+  const { rows } = await deps.db.query<{ id: number; installation_id: number; alert_email: string; full_name: string; workflow_name: string; completed_at: Date; rerun_at: Date; retry_conclusion: string | null; run_url: string }>(
+    `SELECT x.id, x.installation_id, i.alert_email, r.full_name, x.workflow_name, x.completed_at, x.rerun_at, x.retry_conclusion, x.run_url
+       FROM rescue_runs x JOIN installations i ON i.id = x.installation_id JOIN repos r ON r.id = x.repo_id
+      WHERE i.plan <> 'free' AND NOT i.removed AND i.alert_email IS NOT NULL AND x.rerun_at > $1::timestamptz - interval '2 days'
+        AND (x.state = 'done' OR (x.state IN ('rerun_requested', 'rerun_started') AND x.rerun_at <= $1::timestamptz - interval '1 hour'))
+        AND NOT EXISTS (SELECT 1 FROM alerts_sent a WHERE a.key = 'rescue:' || x.id)
+      LIMIT 100`,
+    [deps.now()],
+  );
+  let sent = 0;
+  for (const r of rows) {
+    const utc = (d: Date) => `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+    if (await sendOnce(deps, `rescue:${r.id}`, {
+      to: r.alert_email,
+      subject: `Cronkick re-ran ${r.full_name} · ${r.workflow_name} after GitHub broke it`,
+      text: `GitHub never gave ${r.full_name} · ${r.workflow_name} a runner at ${utc(r.completed_at)}. Cronkick re-ran the failed jobs once at ${utc(r.rerun_at)}. Result: ${r.retry_conclusion ?? 'pending'}.\n\nRun: ${r.run_url}\nRescue: ${deps.baseUrl}/dashboard/${r.installation_id}/rescue`,
     })) sent++;
   }
   return sent;

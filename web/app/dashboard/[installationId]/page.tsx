@@ -16,7 +16,7 @@ import { keepOnGitHub } from './actions';
 import { AlertHint, Code, GapNotice, StatusKey, Ticks, VERDICT_DOT } from '@/components/ui';
 import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { activity, dailyCells, knownZone, exceptions, installationsFor, nextRuns, overview, recentSlots, slotsBetween, type DayCell, type SlotView, type WorkflowRow } from '@/lib/data';
+import { activity, dailyCells, knownZone, exceptions, installationsFor, nextRuns, overview, recentSlots, rescueBrokeCount, slotsBetween, type DayCell, type SlotView, type WorkflowRow } from '@/lib/data';
 import { evidenceLine, manageReposUrl, onTimePct, overviewLayout, rowStatus, VERDICT } from '@/lib/format';
 import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 import { switchPlan } from '@/lib/switch';
@@ -76,8 +76,8 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const s = await requireInstallation(id, `/dashboard/${id}`);
   const inst = (await installationsFor(db, s.installs)).find((i) => i.id === id)!;
   const now = new Date();
-  const [{ repos, totals }, items, problems, evidence] = await Promise.all([
-    overview(db, id, now), activity(db, id, now, 8), exceptions(db, id, now), scheduleEvidence(db, id, now),
+  const [{ repos, totals }, items, problems, evidence, broke] = await Promise.all([
+    overview(db, id, now), activity(db, id, now, 8), exceptions(db, id, now), scheduleEvidence(db, id, now), rescueBrokeCount(db, id, now),
   ]);
   const limits = PLANS[inst.plan];
   const all = repos.flatMap((r) => r.workflows);
@@ -195,6 +195,16 @@ export default async function Overview({ params }: { params: Promise<{ installat
               </div>
             ))}
           </div>
+        )}
+
+        {broke > 0 && (
+          <Link href={`/dashboard/${id}/rescue`} className="tile group flex items-center justify-between gap-4 p-5">
+            <div className="min-w-0">
+              <p className="text-[13px]/5 text-zinc-400">Rescue · last 7 days</p>
+              <p className="mt-1 text-base/6 font-semibold text-red-300">GitHub broke {plural(broke, 'run')} this week</p>
+            </div>
+            <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500 transition group-hover:translate-x-0.5 group-hover:fill-zinc-300" />
+          </Link>
         )}
 
         {layout.timeline && <DayTimeline installationId={id} lanes={lanes} gaps={totals.gaps} serverNow={now.toISOString()} />}

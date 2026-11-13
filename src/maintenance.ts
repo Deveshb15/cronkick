@@ -101,6 +101,13 @@ export async function settle(db: Db, now: Date): Promise<void> {
         AND s.due_at < $1::timestamptz - make_interval(days => ($2::jsonb ->> i.plan)::int)`,
     [now, retainDaysJson()],
   );
+  // Rescue rows follow the same retention as slots.
+  await db.query(
+    `DELETE FROM rescue_runs x USING installations i
+      WHERE x.installation_id = i.id AND x.completed_at < $1::timestamptz - interval '91 days'
+        AND x.completed_at < $1::timestamptz - make_interval(days => ($2::jsonb ->> i.plan)::int)`,
+    [now, retainDaysJson()],
+  );
   // Never tried (Cronkick was down or behind): say so, rather than let it read as GitHub's failure.
   await db.query(
     `UPDATE slots SET state = 'expired', updated_at = $1,

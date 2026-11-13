@@ -72,7 +72,7 @@ Cronkick is MIT-licensed, so you can run it on your own infrastructure. You crea
   | Callback URL | `https://<your-host>/callback` |
   | Webhook URL | `https://<your-host>/webhooks` |
   | Webhook secret | `openssl rand -hex 32` |
-  | Repository permissions | Actions: **Read and write** · Contents: **Read-only** · Metadata: Read-only |
+  | Repository permissions | Actions: **Read and write** · Checks: **Read-only** · Contents: **Read-only** · Metadata: Read-only |
   | Subscribe to events | **Push**, **Workflow run** |
 
   Then generate a client secret and a private key.

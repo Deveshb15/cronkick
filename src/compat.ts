@@ -2,7 +2,8 @@ import { parse } from 'yaml';
 import { parseMarkers, type Flag, type Marker } from './markers.ts';
 import { minIntervalMinutes } from './slots.ts';
 
-export type WorkflowCheck = { markers: Marker[]; flags: Flag[]; suggestedDiff: string | null };
+/** rescueBlockers: why Rescue may never re-run this workflow; empty when it may (once the user turns it on). */
+export type WorkflowCheck = { markers: Marker[]; flags: Flag[]; suggestedDiff: string | null; rescueBlockers: string[] };
 
 type On = Record<string, any>;
 
@@ -22,6 +23,18 @@ export function importFromSchedule(on: On): string | null {
   return lines.length ? lines.join('\n') : null;
 }
 
+/** Jobs that are unsafe or impossible for Rescue to judge as safe to run twice. */
+function rescueBlockers(doc: any, on: On): string[] {
+  const out: string[] = [];
+  if ('pull_request_target' in on) out.push('It runs on `pull_request_target`, with write access on code from forks.');
+  const jobs = doc?.jobs && typeof doc.jobs === 'object' ? doc.jobs : {};
+  for (const [name, job] of Object.entries<any>(jobs)) {
+    if (job?.environment !== undefined) out.push(`Job "${name}" uses an environment (\`environment:\`), which can deploy or need approval.`);
+    if (job?.uses !== undefined) out.push(`Job "${name}" calls a reusable workflow (\`uses:\`), which Rescue can't see into.`);
+  }
+  return out;
+}
+
 /**
  * Everything that must be true before Cronkick turns a workflow on.
  * Any flag means the workflow is never activated silently.
@@ -37,11 +50,13 @@ export function checkWorkflow(text: string, floorMinutes: number): WorkflowCheck
     const at = (e as { linePos?: { line: number; col: number }[] }).linePos?.[0];
     const first = (e as Error).message.split('\n')[0].replace(/:$/, '').replace(/^(Unresolved alias[^:]*):.*/, '$1');
     const where = at && !/at line \d+/.test(first) ? ` at line ${at.line}, column ${at.col}` : '';
-    return { markers: [], flags: [{ line: at?.line, message: `The workflow file isn't valid YAML: ${first}${where}` }], suggestedDiff: null };
+    return { markers: [], flags: [{ line: at?.line, message: `The workflow file isn't valid YAML: ${first}${where}` }], suggestedDiff: null,
+      rescueBlockers: ['The workflow file isn’t valid YAML, so Rescue can’t check it.'] };
   }
   const on = triggers(doc);
   const suggestedDiff = importFromSchedule(on);
-  if (!markers.length && !flags.length) return { markers, flags, suggestedDiff };
+  const blockers = rescueBlockers(doc, on);
+  if (!markers.length && !flags.length) return { markers, flags, suggestedDiff, rescueBlockers: blockers };
 
   if (!('workflow_dispatch' in on)) flags.push({ message: 'Add `workflow_dispatch:` under `on:` — Cronkick triggers the workflow through it.' });
   const inputs = on.workflow_dispatch?.inputs ?? {};
@@ -55,5 +70,5 @@ export function checkWorkflow(text: string, floorMinutes: number): WorkflowCheck
     const gap = minIntervalMinutes(markers);
     if (gap < floorMinutes) flags.push({ message: `These schedules run every ${gap} min; your plan allows every ${floorMinutes} min or slower.` });
   }
-  return { markers, flags, suggestedDiff };
+  return { markers, flags, suggestedDiff, rescueBlockers: blockers };
 }
