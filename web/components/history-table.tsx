@@ -2,7 +2,7 @@
 import { ChevronRightIcon } from '@heroicons/react/16/solid';
 import { Fragment, useEffect, useState } from 'react';
 import type { CoverageGap, SlotDisplay, SlotView } from '@/lib/data';
-import { fmtDelay, fmtDuration, fmtSpan, gapAt } from '@/lib/live';
+import { fmtDelay, fmtDuration, fmtSpan, gapAt, receiptLine } from '@/lib/live';
 import { JobResult, SlotPill, StatusDot, slotHelp } from './ui';
 import { Time, TimeRange, useArrivals } from './live';
 
@@ -19,6 +19,15 @@ const ROUTINE: Partial<Record<SlotDisplay, [string, string]>> = {
 function Status({ s }: { s: HistoryRow }) {
   const r = ROUTINE[s.display];
   return r ? <span title={slotHelp(s.display)}><StatusDot dot={r[0]}>{r[1]}</StatusDot></span> : <SlotPill state={s.display} retrying={s.retrying} />;
+}
+/** What an agent recipe said it did (its receipt), under the run's result. Nothing without a receipt. */
+function Receipt({ s }: { s: HistoryRow }) {
+  const r = receiptLine(s.receipt);
+  if (!r) return null;
+  const cls = 'block text-xs/5 text-zinc-400';
+  return r.url
+    ? <a target="_blank" rel="noreferrer" href={r.url} className={`${cls} underline decoration-white/20 hover:text-zinc-200`}>{r.text} ↗</a>
+    : <span className={cls}>{r.text}</span>;
 }
 const took = (s: HistoryRow) => (s.runStartedAt && s.runCompletedAt ? fmtDuration(Date.parse(s.runCompletedAt) - Date.parse(s.runStartedAt)) : null);
 
@@ -126,7 +135,7 @@ export function HistoryTable({ rows, gaps = [], newerEdge = null }: { rows: Hist
                 <td className={`font-mono text-[13px]/5 tabular-nums max-sm:order-3 ${cell} ${s.tick === 'late' ? 'text-orange-300' : 'text-zinc-300'}`}>
                   <span className="font-sans text-zinc-400 sm:hidden">Sent </span>{fmtDelay(s.sendDelayMs)}{s.tick === 'late' && <span className="font-sans"> late</span>}
                 </td>
-                <td className={`text-[13px]/5 max-sm:order-4 max-sm:justify-self-end ${cell}`}><span className="text-zinc-400 sm:hidden">Run </span><JobResult conclusion={s.conclusion} display={s.display} /></td>
+                <td className={`text-[13px]/5 max-sm:order-4 max-sm:justify-self-end ${cell}`}><span className="text-zinc-400 sm:hidden">Run </span><JobResult conclusion={s.conclusion} display={s.display} /><Receipt s={s} /></td>
                 <td className={`font-mono text-[13px]/5 text-zinc-300 tabular-nums max-sm:hidden ${cell}`}>{took(s) ?? <span className="text-zinc-500">—</span>}</td>
                 <td className={`pr-1 text-right max-sm:hidden ${cell}`}>{s.runUrl ? <a target="_blank" rel="noreferrer" href={s.runUrl} className="text-[13px]/5 text-zinc-300 hover:text-white hover:underline">View run<span className="sr-only"> for {s.due}</span> ↗</a> : <span className="text-zinc-500">—</span>}</td>
               </tr>

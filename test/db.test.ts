@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { readdirSync } from 'node:fs';
 import { migrate, type Db } from '../src/db.ts';
 import { ConfigError, dbUrl } from '../src/config.ts';
 import { freshDb, seed } from './helpers.ts';
@@ -38,7 +39,10 @@ test('missing DATABASE_URL is a named config error', () => {
 test('two servers migrating at once both succeed', async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   const results = await Promise.all([migrate(db), migrate(db)]);
-  expect(results.flat()).toEqual(['001_init.sql', '002_notify.sql', '003_run_times_and_dismiss.sql', '004_refused_and_coverage.sql', '005_probe_health.sql', '006_probe_bootstrap.sql', '007_schedule_watch.sql', '008_probe_pairs.sql', '009_probe_workflow_created.sql', '010_billing.sql']);
+  // Every migration, applied exactly once between the two, in order.
+  const all = readdirSync(new URL('../migrations/', import.meta.url)).filter((f) => f.endsWith('.sql')).sort();
+  expect(all.slice(0, 3)).toEqual(['001_init.sql', '002_notify.sql', '003_run_times_and_dismiss.sql']);
+  expect(results.flat()).toEqual(all);
 });
 
 test('a GitHub-style PKCS#1 App key can sign the App JWT', async () => {

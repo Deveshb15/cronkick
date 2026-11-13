@@ -611,3 +611,13 @@ test('a zone the browser knows but Postgres does not falls back to UTC instead o
   expect(await knownZone(db, 'Asia/Kolkata')).toBe('Asia/Kolkata');
   expect(await knownZone(db, 'US/Pacific-New')).toBe('UTC');
 });
+
+test('workflow history: a run with a receipt carries it; one without has null', async () => {
+  await seed(db);
+  await slot(60, 'accepted', 1);
+  await slot(30, 'accepted', 1);
+  const receipt = { v: 1, recipe: 'nightly-deps', engine: 'claude', outcome: 'pr', url: 'https://github.com/acme/app/pull/7', turns: 22, cost_usd: 0.84 };
+  await db.query('UPDATE slots SET receipt = $1, receipt_at = now() WHERE due_at = $2', [JSON.stringify(receipt), ago(30)]);
+  const h = (await workflowHistory(db, 1, 100, NOW))!;
+  expect(h.slots.map((s) => s.receipt)).toEqual([receipt, null]);
+});

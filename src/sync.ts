@@ -14,6 +14,14 @@ export async function upsertInstallation(deps: Deps, inst: { id: number; account
   );
 }
 
+/** Which agent a workflow runs, for sizing (workflows.agent). A gh-aw lock file runs its engine without these actions. */
+export function agentOf(path: string, text: string): 'claude' | 'codex' | 'gh-aw' | null {
+  if (path.endsWith('.lock.yml') && text.includes('gh-aw')) return 'gh-aw';
+  if (text.includes('anthropics/claude-code-action')) return 'claude';
+  if (text.includes('openai/codex-action')) return 'codex';
+  return null;
+}
+
 /** Re-read every repo the installation can see; repos no longer listed are paused (R4). */
 export async function syncInstallation(deps: Deps, installationId: number): Promise<void> {
   const repos = await deps.gh.listRepos(installationId);
@@ -25,12 +33,12 @@ export async function syncInstallation(deps: Deps, installationId: number): Prom
 /** Read the repo's workflow files on the default branch and store markers, flags and suggested diffs (R3). */
 export async function syncRepo(deps: Deps, installationId: number, repo: RepoInfo, opts = { refresh: true }): Promise<void> {
   const floor = PLANS[await planOf(deps.db, installationId)].floorMinutes;
-  const found: { id: number; path: string; name: string; check: WorkflowCheck | null }[] = [];
+  const found: { id: number; path: string; name: string; check: WorkflowCheck | null; agent: string | null }[] = [];
   for (const w of await deps.gh.listWorkflows(installationId, repo.fullName)) {
     if (!w.path.startsWith('.github/workflows/')) continue; // dynamic workflows (Dependabot, Pages) have no file
     // A disabled workflow rejects every dispatch, so treat it as absent until it's re-enabled.
     const text = w.state === 'active' ? await deps.gh.getFile(installationId, repo.fullName, w.path, repo.defaultBranch) : null;
-    found.push({ ...w, check: text === null ? null : checkWorkflow(text, floor) });
+    found.push({ ...w, check: text === null ? null : checkWorkflow(text, floor), agent: text === null ? null : agentOf(w.path, text) });
   }
 
   await tx(deps.db, async (c) => {
@@ -42,9 +50,9 @@ export async function syncRepo(deps: Deps, installationId: number, repo: RepoInf
     for (const w of found) {
       const present = w.check !== null;
       await c.query(
-        `INSERT INTO workflows (id, repo_id, path, name, flags, suggested_diff, present, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, now())
-         ON CONFLICT (id) DO UPDATE SET path = $3, name = $4, flags = $5, suggested_diff = $6, present = $7, updated_at = now()`,
-        [w.id, repo.id, w.path, w.name, JSON.stringify(w.check?.flags ?? []), w.check?.suggestedDiff ?? null, present],
+        `INSERT INTO workflows (id, repo_id, path, name, flags, suggested_diff, present, agent, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+         ON CONFLICT (id) DO UPDATE SET path = $3, name = $4, flags = $5, suggested_diff = $6, present = $7, agent = $8, updated_at = now()`,
+        [w.id, repo.id, w.path, w.name, JSON.stringify(w.check?.flags ?? []), w.check?.suggestedDiff ?? null, present, w.agent],
       );
       const markers = w.check?.markers ?? [];
       for (const m of markers) {

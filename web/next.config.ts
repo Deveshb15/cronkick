@@ -24,6 +24,7 @@ const config: NextConfig = {
     return [
       { source: '/webhooks', destination: `${worker}/webhooks` },
       { source: '/webhooks/dodo', destination: `${worker}/webhooks/dodo` },
+      { source: '/receipts', destination: `${worker}/receipts` },
       { source: '/healthz', destination: `${worker}/healthz` },
       { source: '/healthz/dispatch', destination: `${worker}/healthz/dispatch` },
       // PostHog proxy (see instrumentation-client.ts).

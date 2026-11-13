@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { isPaid, PLANS, type PlanName } from '../../src/plans.ts';
 import { nextDue } from '../../src/slots.ts';
+import type { Receipt } from '../../src/receipts.ts';
 
 /** Colour of one slot in the dashboard strips. */
 export type Tick = 'ontime' | 'late' | 'waiting' | 'overdue' | 'unconfirmed' | 'missed' | 'idle';
@@ -33,6 +34,8 @@ export type SlotView = {
   sendDelayMs: number | null; triedDelayMs: number | null; runUrl: string | null; conclusion: string | null;
   /** GitHub run start to completion, when GitHub reported both. */
   runMs: number | null;
+  /** What an agent recipe's run reported (src/receipts.ts). Only history rows select it; elsewhere it's null. */
+  receipt: Receipt | null;
 };
 const since = (t: Date | null, due: Date) => (t ? new Date(t).getTime() - due.getTime() : null);
 const slotView = (r: any, now: Date): SlotView => {
@@ -43,6 +46,7 @@ const slotView = (r: any, now: Date): SlotView => {
     id: Number(r.id), workflowId: Number(r.workflow_id), due: due.toISOString(), state: r.state, display, tick: toTick(display, sendDelayMs),
     attempts: Number(r.attempts ?? 0), retrying: display === 'overdue' && r.response_status != null, sendDelayMs, triedDelayMs: since(r.first_attempt_at, due), runUrl: r.run_url, conclusion: r.conclusion,
     runMs: r.run_started_at && r.run_completed_at ? Math.max(0, new Date(r.run_completed_at).getTime() - new Date(r.run_started_at).getTime()) : null,
+    receipt: r.receipt ?? null,
   };
 };
 

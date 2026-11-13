@@ -1,4 +1,5 @@
 // Pure helpers behind the live dashboard pieces (web/components/live.tsx). No React here, so they're unit-tested.
+import type { Receipt } from '../../src/receipts.ts';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -79,6 +80,18 @@ export function viewerZone(cookie: string | undefined): string {
 
 /** "1 run", "3 runs"; pass the plural when it isn't just an added s. */
 export const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+
+const RECEIPT_WORDS: Record<Receipt['outcome'], string> = {
+  pr: 'Opened PR', issue: 'Updated issue', comment: 'Commented', message: 'Posted message', noop: 'No changes', skipped: 'Skipped', failed: 'Failed',
+};
+/** An agent recipe's receipt as one history line: "Opened PR · $0.84 · 22 turns", "Skipped: <reason>". */
+export function receiptLine(r: Receipt | null): { text: string; url: string | null } | null {
+  if (!r) return null;
+  const word = RECEIPT_WORDS[r.outcome] ?? r.outcome;
+  const head = (r.outcome === 'skipped' || r.outcome === 'failed') && r.reason ? `${word}: ${r.reason}` : word;
+  const parts = [head, r.cost_usd != null ? `$${r.cost_usd.toFixed(2)}` : null, r.turns != null ? plural(r.turns, 'turn') : null];
+  return { text: parts.filter(Boolean).join(' · '), url: r.url ?? null };
+}
 
 /** The short name of a time zone ("UTC", "IST", "GMT+5:30" when the browser has none), for labelling times. */
 export function tzAbbrev(timeZone?: string, at = new Date()): string {

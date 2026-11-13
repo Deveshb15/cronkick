@@ -15,6 +15,7 @@ export default function Privacy() {
         <ul>
           <li>Your GitHub installation id, account name, and the names and ids of repositories you give the app access to.</li>
           <li>For each workflow: its path and name, the <code># cronkick</code> lines in it, the crons of a leftover <code>schedule:</code> block (to suggest the switch), and any compatibility warnings. A warning can name a workflow input or give a YAML parser’s error message with its line number.</li>
+          <li>For agent recipes: whether each workflow uses an agent action (Claude, Codex or GitHub Agentic Workflows), read from the same file text and used only to count agent workflows; and the receipt a recipe run sends: outcome, an optional link in your repository, an optional short reason, turns, cost, recipe and agent names. Receipts are deleted with the slot history.</li>
           <li>For each scheduled slot: due time, when we sent it, GitHub’s response, the run link and the job’s result. Deleted after 91 days.</li>
           <li>The alert email address you enter.</li>
           <li>Two cookies of our own: a signed sign-in cookie that lasts one hour, and one that remembers which account you last opened. PostHog sets its own cookie to tell visits apart.</li>
@@ -25,6 +26,7 @@ export default function Privacy() {
           <li>Your code. We read files under <code>.github/workflows/</code> to find schedules and keep only what’s listed above, not the files themselves.</li>
           <li>Personal access tokens. We use GitHub App tokens that GitHub issues for one hour at a time.</li>
           <li>Your GitHub sign-in token. At sign-in we ask GitHub which installations you can see, keep that list in the signed cookie, and discard the token.</li>
+          <li>Model API keys or subscription tokens (Anthropic, OpenAI, Claude, ChatGPT). Agent recipes use them from your repository’s secrets on your own runners; we never receive them.</li>
           <li>Card details. Dodo Payments takes payment on its own checkout page; we only keep its customer and subscription ids and the plan you’re on.</li>
         </ul>
         <h2>Why we use it</h2>

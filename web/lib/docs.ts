@@ -9,6 +9,7 @@ export const DOCS = [
   { group: 'Guides', items: [
     { href: '/docs/marker', title: 'The marker', description: 'The one-line comment that tells Cronkick when to run a workflow.' },
     { href: '/docs/migrate', title: 'Moving from schedule:', description: 'Switch an existing scheduled workflow over without running it twice, and how to switch back.' },
+    { href: '/docs/recipes', title: 'Agent recipes', description: 'Scheduled workflows that run Claude Code or Codex with your own key: how they skip duplicates, what they can do, and the receipt each run sends.' },
   ] },
   { group: 'Reference', items: [
     { href: '/docs/checks', title: 'Compatibility checks', description: 'What Cronkick checks before it turns a workflow on, and how to fix each one.' },
