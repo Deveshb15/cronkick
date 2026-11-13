@@ -18,7 +18,7 @@ export function SiteMenu({ signedIn }: { signedIn: boolean }) {
   }, [open]);
   const link = 'block rounded-lg px-3 py-2.5 text-base/6 font-medium text-zinc-300 hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-brand-500';
   return (
-    // No `relative` here: the panel positions against the sticky header, so it spans the full width.
+    // No `relative` here: the panel positions against the header capsule, so it drops down at the capsule's width.
     <div ref={root} className="md:hidden">
       <button ref={button} type="button" aria-expanded={open} aria-controls="site-menu" onClick={() => setOpen(!open)}
         className="grid size-9 place-items-center rounded-lg text-zinc-400 hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">
@@ -26,7 +26,7 @@ export function SiteMenu({ signedIn }: { signedIn: boolean }) {
         <span className="sr-only">Menu</span>
       </button>
       <nav id="site-menu" hidden={!open} onClick={(e) => { if ((e.target as Element).closest('a')) setOpen(false); }}
-        className="absolute inset-x-0 top-full border-b border-white/5 bg-ink px-4 py-3 shadow-2xl shadow-black/50">
+        className="absolute inset-x-0 top-full mt-2 rounded-[1.25rem] bg-zinc-900 p-2 inset-ring inset-ring-white/10">
         <Link href="/#how-it-works" className={link}>How it works</Link>
         <Link href="/#pricing" className={link}>Pricing</Link>
         <Link href="/docs" className={link}>Docs</Link>

@@ -17,27 +17,31 @@ export function Logo({ className = 'h-6' }: { className?: string }) {
 /** Reads the session itself, so every public page shows Dashboard to a signed-in visitor. */
 export async function SiteHeader() {
   const signedIn = !!(await getSession());
-  const link = 'text-sm/6 font-medium text-zinc-400 hover:text-white';
+  const link = 'rounded-lg px-3 py-1.5 text-sm/6 font-medium text-zinc-400 transition-colors hover:bg-white/5 hover:text-white';
   return (
-    <header className="sticky top-0 z-30 border-b border-white/5 bg-ink/80 backdrop-blur">
-      <div className={`${container} flex items-center justify-between gap-x-6 py-3.5`}>
-        <div className="flex flex-1 items-center"><Logo /></div>
-        <nav className="flex items-center gap-x-8 max-md:hidden">
-          <Link href="/#how-it-works" className={link}>How it works</Link>
-          <Link href="/#pricing" className={link}>Pricing</Link>
-          <Link href="/docs" className={link}>Docs</Link>
-          <Link href="/lateness" className={link}>GitHub lateness</Link>
-        </nav>
-        <div className="flex flex-1 items-center justify-end gap-x-2">
-          {signedIn ? (
-            <ButtonLink href="/dashboard" prefetch={false} size="sm">Dashboard</ButtonLink>
-          ) : (
-            <>
-              <ButtonLink href="/login" prefetch={false} size="sm" variant="ghost">Sign in</ButtonLink>
-              <ButtonLink href={installUrl()} size="sm" className="pl-2"><GitHubMark className="size-4" />Install</ButtonLink>
-            </>
-          )}
-          <SiteMenu signedIn={signedIn} />
+    // A floating glass capsule: the header has no background of its own, so the hero glow runs to the top of the page.
+    // 4.5rem tall in total (pt-4 + h-14); the home hero, docs sidebar and anchor offsets assume that.
+    <header className="pointer-events-none sticky top-0 z-30 pt-4">
+      <div className={container}>
+        <div className="pointer-events-auto relative flex h-14 items-center gap-x-6 rounded-[1.25rem] bg-zinc-900/55 pr-3 pl-5 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] inset-ring inset-ring-white/10 backdrop-blur-xl backdrop-saturate-150">
+          <div className="flex flex-1 items-center"><Logo /></div>
+          <nav className="flex items-center gap-x-1 max-md:hidden">
+            <Link href="/#how-it-works" className={link}>How it works</Link>
+            <Link href="/#pricing" className={link}>Pricing</Link>
+            <Link href="/docs" className={link}>Docs</Link>
+            <Link href="/lateness" className={link}>GitHub lateness</Link>
+          </nav>
+          <div className="flex flex-1 items-center justify-end gap-x-2">
+            {signedIn ? (
+              <ButtonLink href="/dashboard" prefetch={false} size="sm">Dashboard</ButtonLink>
+            ) : (
+              <>
+                <ButtonLink href="/login" prefetch={false} size="sm" variant="ghost">Sign in</ButtonLink>
+                <ButtonLink href={installUrl()} size="sm" className="pl-2"><GitHubMark className="size-4" />Install</ButtonLink>
+              </>
+            )}
+            <SiteMenu signedIn={signedIn} />
+          </div>
         </div>
       </div>
     </header>

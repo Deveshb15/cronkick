@@ -4,7 +4,7 @@ import { container, SiteFooter, SiteHeader } from '@/components/site';
 
 // Sidebar | page | "On this page", like most developer docs. The two side columns stick under the header.
 export default function DocsLayout({ children }: { children: ReactNode }) {
-  const side = 'sticky top-16 h-[calc(100dvh-4rem)] overflow-y-auto';
+  const side = 'sticky top-18 h-[calc(100dvh-4.5rem)] overflow-y-auto';
   return (
     <>
       <SiteHeader />

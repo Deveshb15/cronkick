@@ -86,7 +86,7 @@ export default async function Home() {
       <SiteHeader />
       <main className="overflow-x-clip">
         {/* Hero: one centred stack, then the marker card as the product shot */}
-        <section className="relative isolate overflow-hidden pt-14 pb-24 sm:pt-20 sm:pb-28">
+        <section className="relative isolate -mt-18 overflow-hidden pt-32 pb-24 sm:pt-38 sm:pb-28">
           <div aria-hidden="true" className="time-grid absolute inset-0 -z-10">
             {SPARKS.map(([x, y], i) => (
               <span key={i} className="absolute size-2 -translate-1/2 animate-twinkle rounded-full bg-[radial-gradient(circle,var(--color-brand-400),transparent_70%)]" style={{ left: `calc(50% + ${x * 64}px)`, top: y * 64, animationDelay: `${(i * 0.37) % 3}s` }} />
@@ -160,7 +160,7 @@ export default async function Home() {
         </section>
 
         {/* Setup */}
-        <section id="how-it-works" className="scroll-mt-16 border-t border-white/5 py-24 sm:py-32">
+        <section id="how-it-works" className="scroll-mt-20 border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="Setup" title="Two minutes, three steps.">
               <p>No SDK, no agent, no dashboard to configure. Your jobs keep running on GitHub, on your runners.</p>
@@ -215,7 +215,7 @@ export default async function Home() {
         </section>
 
         {/* Pricing */}
-        <section id="pricing" className="scroll-mt-16 border-t border-white/5 py-24 sm:py-32">
+        <section id="pricing" className="scroll-mt-20 border-t border-white/5 py-24 sm:py-32">
           <div className={container}>
             <SplitHeading eyebrow="Pricing" title="Simple pricing. No overage charges, ever.">
               <p>At your plan’s limit, extra schedules pause, and we email you if you’ve added an alert address in Settings. Nothing is charged for going over.</p>
