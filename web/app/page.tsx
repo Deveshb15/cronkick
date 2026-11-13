@@ -267,7 +267,7 @@ export default async function Home() {
               <div className="relative grid size-16 place-items-center rounded-2xl bg-zinc-900 inset-ring inset-ring-white/10"><Symbol className="size-9" /></div>
             </div>
             <h2 className="reveal mx-auto max-w-[20ch] text-4xl font-semibold tracking-tight text-balance sm:text-6xl">Stop wondering if last night’s job ran.</h2>
-            <p className="mx-auto mt-6 max-w-[48ch] text-lg text-pretty text-zinc-400">Free for up to 10 schedules. Two minutes to set up.</p>
+            <p className="mx-auto mt-6 max-w-[48ch] text-lg text-pretty text-zinc-400">Free for up to {PLANS.free.schedules} schedules. Two minutes to set up.</p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
               <ButtonLink href={installUrl()} variant="primary" size="lg" className="btn-glow"><GitHubMark className="size-4" />Install with GitHub</ButtonLink>
               <ButtonLink href="/lateness" variant="ghost" size="lg">See GitHub’s lateness <span aria-hidden="true">→</span></ButtonLink>

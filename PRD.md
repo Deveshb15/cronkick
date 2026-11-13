@@ -8,7 +8,7 @@ Sources: `../research/round10-opus-critique.md` §3–4, `../research/round10-gp
 v0.2 changes:
 - An honest competitor landscape (§2.1).
 - Timezones and multiple crons per workflow are now in v1.
-- Free tier: 15-minute interval; widened on 2026-11-10 to unlimited repos, 10 schedules and 7 days of history. Pro: annual option, no slot cap.
+- Free tier: unlimited repos, 3 schedules, 15-minute interval and 7 days of history (widened to 10 schedules on 2026-11-10, cut back to 3 on 2026-11-12 so Pro is worth paying for). Pro $5 for personal accounts, Team $19 for organizations, both with an annual option.
 - The 30 s target is consistent throughout, and a slot's retry deadline stops at the next slot.
 - Launch leads with the GitHub Marketplace.
 
@@ -156,21 +156,21 @@ You install a GitHub App and change one line in the workflow file. You get a per
 |---|---|---|---|
 | D1 | What happens to the native `schedule:` block | (a) Remove it: no duplicates, no fallback. (b) Keep it as a backup and cancel GitHub's late runs through the `workflow_run` webhook. | **(a) for v1.** With (b), GitHub's late native run may already have done its side effects before we can cancel it (GPT critique §2). Offer (b) later as an opt-in. |
 | D2 | Where the cron lives | (a) `# ontime:` comments under `workflow_dispatch`. (b) Read the existing `on.schedule` cron. | **(a)**, since D1 removes `schedule:`. One comment per cron, each with an optional `tz=`. Also offer an "import from your existing schedule" button that writes the diff, carrying over every cron and its timezone. |
-| D3 | Pricing | (a) One paid plan at $9. (b) Free + Pro $6 + Team $19. | **Free + Pro at $9/mo or $90/yr per account** (50 schedules, 5-min interval, alerts, 90-day history). $9 sits between the generic crons ($0–8) and the GitHub-targeted ones ($12–29) [V, round 11]. Add Team $19 only once auto re-run exists. |
-| D4 | Free tier | yes / no | **Yes:** unlimited repos, 10 schedules, every 15 minutes or slower, 7 days of history (widened 2026-11-10 from 1 repo / 3 schedules / 20 slots; alerts stay Pro-only). Hourly was the stingiest free tier on the market [V, round 11]. The Free tier drives installs and Marketplace ranking. |
+| D3 | Pricing | (a) One paid plan at $9. (b) Free + Pro $6 + Team $19. | **Free + Pro $5/mo or $50/yr for personal accounts + Team $19/mo or $190/yr for organizations** (decided 2026-11-12, replacing an earlier single Pro at $9). Limits and prices live in `src/plans.ts`. |
+| D4 | Free tier | yes / no | **Yes:** unlimited repos, 3 schedules, every 15 minutes or slower, 7 days of history (widened to 10 schedules on 2026-11-10, cut back to 3 on 2026-11-12; run-failure alerts stay paid-only). Hourly was the stingiest free tier on the market [V, round 11]. The Free tier drives installs and Marketplace ranking. |
 | D5 | Name and domain | Ontime / slotcron / cronbeat… | Open. Check that the domain and the GitHub App name are free. |
 
-## 8. Pricing (proposed, per D3)
+## 8. Pricing (per D3; `src/plans.ts` is the source of truth)
 
 | Plan | Price | Limits |
 |---|---|---|
-| Free | $0 | unlimited repos · 10 schedules · every 15 min or slower · 7-day history |
-| Pro | **$9/mo or $90/yr** per GitHub account or org | 50 schedules · 5-minute interval · email alerts · 90-day history |
+| Free | $0 | unlimited repos · 3 schedules · every 15 min or slower · 7-day history |
+| Pro | **$5/mo or $50/yr**, personal GitHub accounts | 50 schedules · 5-minute interval · email alerts · 90-day history |
+| Team | **$19/mo or $190/yr**, GitHub organizations | 200 schedules · 1-minute interval · email alerts · 400-day history |
 
 The limit is schedules, not slots. 50 schedules at 5 minutes is at most about 432k slots/mo, or about 600 dispatches an hour per installation. That's well under GitHub's 5,000 requests an hour per installation [G: check this against GitHub's current rate-limit docs before launch].
-| Team (later) | $19/mo | Unlimited schedules · one auto re-run when GitHub's own infrastructure fails the job · Slack/Discord |
 
-Expected margin at 20 paying accounts: about $180 MRR minus about $25–40/mo in infrastructure, email and backups [G].
+Expected margin at 20 paying accounts: $100 (all Pro) to $380 (all Team) MRR, minus about $25–40/mo in infrastructure, email and backups [G].
 
 ## 9. Tech stack
 
