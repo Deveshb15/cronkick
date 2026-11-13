@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { latestRun, nextPlan, rowStatus, evidenceLine } from '../web/lib/format.ts';
+import { latestRun, nextPlan, onTimePct, overviewLayout, rowStatus, evidenceLine } from '../web/lib/format.ts';
 import { countdown, fmtAge, gapAt, gapMarks, plural, tzAbbrev, viewerZone, fmtDelay, fmtDuration, humanCron, newIds } from '../web/lib/live.ts';
 
 test('plain-words cron for common shapes, raw cron otherwise', () => {
@@ -142,4 +142,25 @@ test('evidence line: counts, window and median in words; red only when 1 in 10 o
   expect(evidenceLine(e(1, 1, 42), now)).toEqual({ text: 'GitHub ran it 1 of 1 time in the last 24 h · median 42 s late', bad: false });
   expect(evidenceLine(e(19, 20, 90, 6, false), now)).toEqual({ text: 'GitHub ran it 19 of 20 times in the last 6 h · median 2 min late', bad: false });
   expect(evidenceLine({ measuring: true, since: now.toISOString() }, now)).toEqual({ text: 'Measuring how GitHub runs it…', bad: false });
+});
+
+test('overview layout: each state shows only what is honest', () => {
+  const L = (v: Partial<Parameters<typeof overviewLayout>[0]>) => overviewLayout({ active: 1, due: 0, ran: false, next: true, problem: false, ...v });
+  // Waiting for the first run: the countdown alone.
+  expect(L({})).toEqual({ hero: true, stats: false, timeline: false, upNext: false, attentionFirst: false, quiet: false });
+  expect(L({ active: 3, due: 40, ran: true })).toEqual({ hero: true, stats: true, timeline: true, upNext: true, attentionFirst: false, quiet: false });
+  expect(L({ active: 7, due: 40, ran: true }).timeline).toBe(false);
+  expect(L({ active: 6, due: 40, ran: true }).timeline).toBe(true);
+  // A problem (attention item, needs fix or paused) drops the hero and leads.
+  expect(L({ active: 3, due: 40, ran: true, problem: true })).toMatchObject({ hero: false, attentionFirst: true, stats: true, timeline: true });
+  // Quiet: ran before, nothing due in 24 h: countdown, no zero stats.
+  expect(L({ due: 0, ran: true })).toMatchObject({ hero: true, stats: false, quiet: true, upNext: true });
+  // Nothing planned: no countdown, no queue.
+  expect(L({ next: false, ran: true, due: 5 })).toMatchObject({ hero: false, upNext: false });
+});
+
+test('on-time percent: none when nothing was due, rounded down otherwise', () => {
+  expect(onTimePct({ due: 0, onTime: 0 })).toBeNull();
+  expect(onTimePct({ due: 250, onTime: 249 })).toBe(99);
+  expect(onTimePct({ due: 4, onTime: 4 })).toBe(100);
 });

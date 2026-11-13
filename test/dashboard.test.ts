@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
-import { accountHealth, activity, dailyCells, dayBounds, knownZone, exceptions, nextRuns, overview, rangeStats, recentSlots, setDismissed, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
+import { accountHealth, activity, dailyCells, dayBounds, knownZone, exceptions, nextRuns, overview, rangeStats, recentSlots, setDismissed, slotsBetween, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
 import { VERDICT } from '../web/lib/format.ts';
 import { decodeSession, encodeSession } from '../web/lib/session.ts';
 import { freshDb, seed } from './helpers.ts';
@@ -517,6 +517,31 @@ test('recent strips stop at the plan history window; one workflow can be asked f
   expect((await recentSlots(db, 1, NOW, 96)).get(100)).toHaveLength(5);
   const one = await recentSlots(db, 1, NOW, 96, 101);
   expect([...one.keys()]).toEqual([101]);
+});
+
+test('slots between: a time window per workflow, clamped to plan history and capped, never another installation', async () => {
+  await seed(db, { plan: 'free' });
+  await seed(db, { installationId: 2, repoId: 20, workflowId: 200 });
+  await db.query(`INSERT INTO workflows (id, repo_id, path, name) VALUES (101, 10, '.github/workflows/b.yml', 'b')`);
+  for (const m of [30, 120, 600, 1500]) await slot(m, 'fired', 1);
+  await slot(-10, 'pending', null); // not due yet
+  await slot(60, 'fired', 1, 101);
+  await slot(60, 'fired', 1, 200, 2, 20);
+  const w = await slotsBetween(db, 1, ago(18 * 60), NOW);
+  expect(w.get(100)!.map((x) => x.due)).toEqual([ago(600), ago(120), ago(30)].map((d) => d.toISOString()));
+  expect(w.get(101)).toHaveLength(1);
+  expect(w.has(200)).toBe(false);
+  // A window wider than retention stops at the plan's 7 days.
+  await slot(8 * 24 * 60, 'fired', 1);
+  expect((await slotsBetween(db, 1, ago(30 * 24 * 60), NOW)).get(100)).toHaveLength(4);
+  expect((await slotsBetween(db, 1, ago(18 * 60), NOW, 2)).get(100)!.map((x) => x.due)).toEqual([ago(120), ago(30)].map((d) => d.toISOString()));
+});
+
+test('next runs: an until bound stops early and still respects the count', () => {
+  const at = new Date('2026-11-10T14:07:00Z');
+  const s = [{ cron: '*/15 * * * *', tz: 'UTC', status: 'active' as const }];
+  expect(nextRuns(s, at, 99, new Date('2026-11-10T15:00:00Z')).map((t) => t.slice(11, 16))).toEqual(['14:15', '14:30', '14:45', '15:00']);
+  expect(nextRuns(s, at, 2, new Date('2026-11-10T18:00:00Z'))).toHaveLength(2);
 });
 
 test('next runs: five in order, across a DST change without a repeat, none when nothing is active', () => {

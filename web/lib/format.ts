@@ -31,6 +31,26 @@ export function probeSample(r: ProbeReport, now: Date): string {
   ].filter(Boolean).join(' · ');
 }
 
+/** Most schedules the overview timeline draws; past this the lanes stop being readable and rows take over. */
+export const TIMELINE_MAX = 6;
+export type OverviewLayout = { hero: boolean; stats: boolean; timeline: boolean; upNext: boolean; attentionFirst: boolean; quiet: boolean };
+/**
+ * Which overview sections show. A countdown never outranks a problem; nothing shows that would be empty or say 0.
+ * `ran`: any slot ever came due. `problem`: needs-attention items, or a workflow that needs a fix or is paused.
+ */
+export function overviewLayout(v: { active: number; due: number; ran: boolean; next: boolean; problem: boolean }): OverviewLayout {
+  return {
+    hero: v.next && !v.problem,
+    stats: v.due > 0,
+    timeline: v.ran && v.active > 0 && v.active <= TIMELINE_MAX,
+    upNext: v.ran && v.next,
+    attentionFirst: v.problem,
+    quiet: v.ran && v.due === 0,
+  };
+}
+/** Whole-percent on time, rounded down so 99.6 % never reads as 100 %; null when nothing was due. */
+export const onTimePct = (c: Pick<Counts24, 'due' | 'onTime'>) => (c.due ? Math.floor((c.onTime / c.due) * 100) : null);
+
 /**
  * The overview's status line for each verdict, from the 24 h counts. It says what was observed and nothing more:
  * "No dispatch issues", never "all on time", because a Cronkick coverage gap can hide runs nobody saw.

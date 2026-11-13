@@ -5,11 +5,11 @@ import { fmtDelay, gapMarks } from '@/lib/live';
 import { SLOT_LABEL } from './ui';
 import { localTime, useArrivals } from './live';
 
-const COLOR: Record<Tick, string> = {
+export const COLOR: Record<Tick, string> = {
   ontime: 'bg-ontime', late: 'bg-late', waiting: 'tick-waiting', overdue: 'tick-overdue', unconfirmed: 'tick-unconfirmed', missed: 'bg-missed', idle: 'tick-skip',
 };
 // Same words as the status key.
-const WORD: Record<Tick, string> = {
+export const WORD: Record<Tick, string> = {
   ontime: 'on time', late: 'late', waiting: 'sending', overdue: 'overdue', unconfirmed: 'unconfirmed', missed: 'refused or gave up', idle: 'skipped',
 };
 /** "+0.4 s" for a sent run; "—" when nothing was sent. */

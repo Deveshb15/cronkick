@@ -6,14 +6,17 @@ import { DispatchToasts, NeedsAttention } from '@/components/activity';
 import { FirstRun } from '@/components/first-run';
 import { Countdown, Time, Zone } from '@/components/live';
 import { LiveStrip } from '@/components/live-strip';
+import { DayTimeline, PAST_H, AHEAD_H } from '@/components/day-timeline';
+import { NextKick } from '@/components/next-kick';
+import { UpNext } from '@/components/up-next';
 import { ScheduleCard } from '@/components/schedule-card';
 import { SwitchSection, type Candidate } from '@/components/switch-card';
 import { keepOnGitHub } from './actions';
 import { AlertHint, Code, GapNotice, StatusKey, Ticks, VERDICT_DOT } from '@/components/ui';
 import { canSee, requireInstallation } from '@/lib/access';
 import { db } from '@/lib/db';
-import { activity, dailyCells, knownZone, exceptions, installationsFor, overview, recentSlots, type DayCell, type SlotView, type WorkflowRow } from '@/lib/data';
-import { evidenceLine, manageReposUrl, rowStatus, VERDICT } from '@/lib/format';
+import { activity, dailyCells, knownZone, exceptions, installationsFor, nextRuns, overview, recentSlots, slotsBetween, type DayCell, type SlotView, type WorkflowRow } from '@/lib/data';
+import { evidenceLine, manageReposUrl, onTimePct, overviewLayout, rowStatus, VERDICT } from '@/lib/format';
 import { fmtDelay, humanCron, plural, tzAbbrev, viewerZone } from '@/lib/live';
 import { switchPlan } from '@/lib/switch';
 import { isPaid, PLANS } from '../../../../src/plans.ts';
@@ -107,20 +110,41 @@ export default async function Overview({ params }: { params: Promise<{ installat
   const mode = shownWfs.length >= 4 ? 'rows' : shownWfs.length === 1 && shownWfs[0].status === 'active' ? 'spotlight' : 'cards';
   const tz = await knownZone(db, viewerZone((await cookies()).get('tz')?.value));
   const carded = mode === 'rows' ? [] : shownWfs.filter((w) => w.status === 'active');
-  const [slots, days] = await Promise.all([
+  const active = shownWfs.filter((w) => w.status === 'active');
+  const nk = totals.nextKick;
+  const layout = overviewLayout({
+    active: active.length, due: c.due, ran: totals.anyDue, next: !!nk,
+    problem: problems.items.length > 0 || shownWfs.some((w) => w.status !== 'active'),
+  });
+  const H = 3_600_000;
+  const [slots, days, inWindow] = await Promise.all([
     recentSlots(db, id, now, mode === 'spotlight' ? 96 : STRIP),
     carded.length ? dailyCells(db, id, carded.map((w) => w.id), now, tz, isPaid(inst.plan) ? 30 : 7) : new Map<number, DayCell[]>(),
+    layout.timeline ? slotsBetween(db, id, new Date(now.getTime() - PAST_H * H), now) : new Map<number, SlotView[]>(),
   ]);
   const mine = shownWfs
     .map((w) => ({ w, st: rowStatus(w.status, slots.get(w.id) ?? [], now) }))
     .sort((a, b) => a.st.rank - b.st.rank)
     .map((x) => x.w);
   const rows = mode === 'rows' ? mine : mine.filter((w) => w.status !== 'active');
-  const summary = c.due
-    ? [`${c.onTime} of ${plural(c.due, 'run')} sent on time`, totals.medianDelayMs !== null && `median delay ${fmtDelay(totals.medianDelayMs)} over ${plural(c.onTime + c.late, 'sent run')}`,
-      c.failed ? `${plural(c.failed, 'GitHub run')} failed` : c.passed ? 'no failed GitHub runs' : null, 'last 24 h'].filter(Boolean).join(' · ')
-    : null;
-  const nk = totals.nextKick;
+  const pct = onTimePct(c);
+  const off = c.due - c.onTime;
+  // Leads with what went wrong: a pooled percentage can hide one missed weekly run among hundreds of fast ones.
+  const stats: [label: string, value: string, note: string, tone: string][] = [
+    ['Not on time', String(off), off ? [c.late && `${c.late} late`, c.waiting + c.overdue && `${c.waiting + c.overdue} not sent yet`, c.unconfirmed && `${c.unconfirmed} unconfirmed`, c.refused + c.gaveUp && `${c.refused + c.gaveUp} not sent`].filter(Boolean).join(' · ') : 'none', off ? 'text-orange-200' : 'text-emerald-300'],
+    ['On time', pct === null ? '—' : `${pct}%`, `${c.onTime} of ${plural(c.due, 'run')} due`, 'text-white'],
+    ['Median delay', fmtDelay(totals.medianDelayMs), `over ${plural(c.onTime + c.late, 'sent run')}`, 'text-white'],
+    ['GitHub failures', String(c.failed), c.passed ? `${c.passed} passed` : 'no results yet', c.failed ? 'text-red-300' : 'text-white'],
+  ];
+  const feed = active.filter((w) => w.upcoming.length).map(({ id, name, repo, upcoming }) => ({ id, name, repo, upcoming }));
+  const lanes = layout.timeline ? active.map((w) => ({
+    id: w.id, name: w.name, repo: w.repo, slots: inWindow.get(w.id) ?? [], upcoming: nextRuns(w.schedules, now, 400, new Date(now.getTime() + AHEAD_H * H)),
+  })) : [];
+  const problemRows = (
+    <ul role="list" className="mt-3 divide-y divide-white/5 overflow-hidden rounded-xl inset-ring inset-ring-white/10 empty:hidden">
+      {rows.map((w) => <ScheduleRow key={w.id} w={w} installationId={id} slots={slots.get(w.id) ?? []} gaps={totals.gaps} limit={limits.schedules} now={now} />)}
+    </ul>
+  );
   return (
     <>
       <div className={`${container} space-y-10 pt-8 pb-16 sm:pt-10`}>
@@ -131,7 +155,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
             {totals.verdict === 'no_runs' && nk ? <span>First run <Countdown to={nk.due} /></span> : VERDICT[totals.verdict](c)}
           </h1>
           <p className="text-sm/6 text-zinc-400">
-            {summary ?? (nk ? <>Next run: {nk.workflow} <Time iso={nk.due} className="text-zinc-200" /> · <Countdown to={nk.due} /></> : 'Nothing is planned yet.')}
+            {c.due ? 'Last 24 h' : layout.quiet && nk ? <>Next run <Time iso={nk.due} className="text-zinc-200" /></> : nk ? 'Nothing has run yet' : 'Nothing is planned yet.'}
             {' '}· times in <Zone />
           </p>
           <GapNotice gaps={totals.gaps} className="mt-4" />
@@ -143,6 +167,28 @@ export default async function Overview({ params }: { params: Promise<{ installat
             <div className="mt-3"><NeedsAttention installationId={id} items={problems.items} more={problems.more} /></div>
           </section>
         )}
+
+        {/* A schedule that needs a fix or is paused sits right under the headline, with its reason. */}
+        {layout.attentionFirst && mode !== 'rows' && rows.length > 0 && <section aria-label="Schedules that need you" className="-mt-7">{problemRows}</section>}
+
+        {layout.hero && <NextKick installationId={id} workflows={feed} first={!totals.anyDue} />}
+
+        {layout.stats && (
+          <div className="@container"><dl aria-label="Last 24 hours" className="grid grid-cols-2 gap-y-6 @2xl:grid-cols-4">
+            {stats.map(([label, value, note, tone]) => (
+              <div key={label} className="min-w-0 px-5 first:pl-0 [&:nth-child(2n)]:border-l [&:nth-child(2n)]:border-white/10 @max-2xl:[&:nth-child(2n+1)]:pl-0 @2xl:[&:not(:first-child)]:border-l @2xl:[&:not(:first-child)]:border-white/10 @2xl:[&:nth-child(4n+1)]:pl-0">
+                <dt className="truncate text-[13px]/5 text-zinc-400">{label}</dt>
+                <dd className={`mt-1 text-3xl/9 font-semibold tracking-tight tabular-nums ${tone}`}>{value}</dd>
+                <dd className="truncate text-xs/5 text-zinc-500">{note}</dd>
+              </div>
+            ))}
+          </dl></div>
+        )}
+
+        {layout.timeline && <DayTimeline installationId={id} lanes={lanes} gaps={totals.gaps} serverNow={now.toISOString()} />}
+
+        {/* One schedule: the hero and its card already say what's next. */}
+        {layout.upNext && active.length > 1 && <UpNext installationId={id} workflows={feed} />}
 
         <section aria-labelledby="schedules">
           <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
@@ -164,9 +210,7 @@ export default async function Overview({ params }: { params: Promise<{ installat
               ))}
             </div>
           )}
-          <ul role="list" className="mt-3 divide-y divide-white/5 overflow-hidden rounded-xl inset-ring inset-ring-white/10 empty:hidden">
-            {rows.map((w) => <ScheduleRow key={w.id} w={w} installationId={id} slots={slots.get(w.id) ?? []} gaps={totals.gaps} limit={limits.schedules} now={now} />)}
-          </ul>
+          {(!layout.attentionFirst || mode === 'rows') && problemRows}
           {!inst.alert_email && mine.some((w) => w.status === 'limited') && <p className="mt-3 text-[13px]/5 text-zinc-400"><AlertHint id={id} /></p>}
         </section>
 

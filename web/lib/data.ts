@@ -73,6 +73,27 @@ export async function recentSlots(db: pg.Pool, installationId: number, now: Date
   return out;
 }
 
+/**
+ * Every due slot per workflow with due time in (from, now], oldest first, never older than the plan shows. For the
+ * overview timeline, which needs a time window (a count would span minutes of a fast job and months of a weekly one).
+ * `cap` per workflow bounds the rows; 1200 covers 18 h of a 1-minute schedule (Team's fastest).
+ */
+export async function slotsBetween(db: pg.Pool, installationId: number, from: Date, now: Date, cap = 1200): Promise<Map<number, SlotView[]>> {
+  const floor = await retainedFrom(db, installationId, now);
+  const { rows } = await db.query(
+    `SELECT s.id, s.workflow_id, s.due_at, s.state, s.run_url, s.conclusion, s.fired_at, s.first_attempt_at, s.attempts, s.response_status,
+            s.run_started_at, s.run_completed_at
+       FROM workflows w JOIN repos r ON r.id = w.repo_id
+       CROSS JOIN LATERAL (SELECT * FROM slots WHERE workflow_id = w.id AND due_at <= $2 AND due_at > $3 ORDER BY due_at DESC LIMIT $4) s
+      WHERE r.installation_id = $1 AND s.installation_id = $1
+      ORDER BY s.workflow_id, s.due_at`,
+    [installationId, now, from > floor ? from : floor, cap],
+  );
+  const out = new Map<number, SlotView[]>();
+  for (const r of rows) out.set(Number(r.workflow_id), [...(out.get(Number(r.workflow_id)) ?? []), slotView(r, now)]);
+  return out;
+}
+
 export type Flag = { line?: number; message: string };
 export type Schedule = { cron: string; tz: string; status: 'active' | 'paused_limit' };
 export type WorkflowStatus = 'active' | 'limited' | 'needs_fix' | 'ready' | 'none';
@@ -172,10 +193,10 @@ async function installCounts(db: pg.Pool, ids: number[], now: Date): Promise<Map
  * The next `n` due times of a workflow's active schedules, each strictly after the last, through the same rules the
  * planner uses (DST, merged crons). Empty when nothing is active.
  */
-export function nextRuns(schedules: Schedule[], from: Date, n = 5): string[] {
+export function nextRuns(schedules: Schedule[], from: Date, n = 5, until?: Date): string[] {
   const active = schedules.filter((s) => s.status === 'active');
   const out: string[] = [];
-  for (let t: Date | null = from; out.length < n && (t = nextDue(active, t)); ) out.push(t.toISOString());
+  for (let t: Date | null = from; out.length < n && (t = nextDue(active, t)) && (!until || t <= until); ) out.push(t.toISOString());
   return out;
 }
 
