@@ -32,15 +32,15 @@ export function DayTimeline({ installationId, lanes, gaps, serverNow }: { instal
     .filter(([a, b]) => b > a);
 
   return (
-    <section aria-labelledby="timeline" className="max-md:hidden">
+    <section aria-labelledby="timeline" className="tile p-5 max-md:hidden">
       <div className="flex items-baseline justify-between gap-4">
-        <h2 id="timeline" className="text-base/6 font-semibold">Last {PAST_H} h <span className="font-normal text-zinc-400">· next {AHEAD_H} h</span></h2>
+        <h2 id="timeline" className="text-sm/6 font-semibold">Last {PAST_H} h <span className="font-normal text-zinc-400">· next {AHEAD_H} h</span></h2>
         <p className="flex items-center gap-x-4 text-xs/5 text-zinc-400">
           {(['ontime', 'late', 'missed'] as Tick[]).map((t) => <span key={t} className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2.5 w-1.5 rounded-sm ${COLOR[t]}`} />{WORD[t]}</span>)}
           <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-2.5 w-1.5 rounded-sm inset-ring-1 inset-ring-zinc-400" />planned</span>
         </p>
       </div>
-      <div className="mt-3 rounded-2xl bg-white/[0.02] inset-ring inset-ring-white/10">
+      <div className="mt-3 -mx-5 -mb-5 border-t border-white/5">
         <div className="relative grid grid-cols-[11rem_minmax(0,1fr)]">
           {/* Axis */}
           <div className="h-8 border-b border-white/5" />
@@ -57,7 +57,7 @@ export function DayTimeline({ installationId, lanes, gaps, serverNow }: { instal
             const summary = `${l.name}: last ${PAST_H} h ${counts.join(', ') || 'nothing due'}${next.length ? `; next ${live === null ? `${new Date(next[0]).toISOString().slice(11, 16)} UTC` : localTime(new Date(next[0]).toISOString())}` : ''}`;
             return (
               <div key={l.id} className="contents">
-                <Link href={`/dashboard/${installationId}/workflows/${l.id}`} aria-label={summary} className="flex min-w-0 flex-col justify-center border-b border-white/5 px-4 py-2.5 hover:bg-white/[0.03]">
+                <Link href={`/dashboard/${installationId}/workflows/${l.id}`} aria-label={summary} className="flex min-w-0 flex-col justify-center border-b border-white/5 px-5 py-2.5 hover:bg-white/[0.03]">
                   <span className="truncate text-[13px]/5 font-medium">{l.name}</span>
                   <span className="truncate text-xs/4 text-zinc-500">{l.repo.split('/')[1]}</span>
                 </Link>

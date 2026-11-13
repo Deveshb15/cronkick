@@ -8,6 +8,7 @@ import { Countdown, Time, Zone } from '@/components/live';
 import { LiveStrip } from '@/components/live-strip';
 import { DayTimeline, PAST_H, AHEAD_H } from '@/components/day-timeline';
 import { NextKick } from '@/components/next-kick';
+import { RecentRuns } from '@/components/recent-runs';
 import { UpNext } from '@/components/up-next';
 import { ScheduleCard } from '@/components/schedule-card';
 import { SwitchSection, type Candidate } from '@/components/switch-card';
@@ -171,24 +172,41 @@ export default async function Overview({ params }: { params: Promise<{ installat
         {/* A schedule that needs a fix or is paused sits right under the headline, with its reason. */}
         {layout.attentionFirst && mode !== 'rows' && rows.length > 0 && <section aria-label="Schedules that need you" className="-mt-7">{problemRows}</section>}
 
-        {layout.hero && <NextKick installationId={id} workflows={feed} first={!totals.anyDue} />}
-
-        {layout.stats && (
-          <div className="@container"><dl aria-label="Last 24 hours" className="grid grid-cols-2 gap-y-6 @2xl:grid-cols-4">
-            {stats.map(([label, value, note, tone]) => (
-              <div key={label} className="min-w-0 px-5 first:pl-0 [&:nth-child(2n)]:border-l [&:nth-child(2n)]:border-white/10 @max-2xl:[&:nth-child(2n+1)]:pl-0 @2xl:[&:not(:first-child)]:border-l @2xl:[&:not(:first-child)]:border-white/10 @2xl:[&:nth-child(4n+1)]:pl-0">
-                <dt className="truncate text-[13px]/5 text-zinc-400">{label}</dt>
-                <dd className={`mt-1 text-3xl/9 font-semibold tracking-tight tabular-nums ${tone}`}>{value}</dd>
-                <dd className="truncate text-xs/5 text-zinc-500">{note}</dd>
+        {/* The bento: tiles sit 16 px apart, closer than the page's sections. */}
+        <div className="space-y-4 empty:hidden">
+        {(layout.hero || layout.stats) && (
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {layout.hero && <NextKick installationId={id} workflows={feed} first={!totals.anyDue} className={`col-span-2 ${layout.stats ? 'lg:row-span-2' : 'lg:col-span-4'}`} />}
+            {layout.stats && stats.map(([label, value, note, tone], i) => (
+              <div key={label} className="tile flex min-w-0 flex-col p-5">
+                <p className="truncate text-[13px]/5 text-zinc-400">{label}</p>
+                <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+                  <p className={`text-3xl/9 font-semibold tracking-tight tabular-nums sm:text-4xl/10 ${tone}`}>{value}</p>
+                  {/* On time gets its ring: the share of due runs sent on time. */}
+                  {i === 1 && pct !== null && (
+                    <svg aria-hidden="true" viewBox="0 0 44 44" className="size-11 shrink-0 -rotate-90">
+                      <circle cx="22" cy="22" r="18" fill="none" strokeWidth="5" className="stroke-white/10" />
+                      <circle cx="22" cy="22" r="18" fill="none" strokeWidth="5" strokeLinecap="round" className={pct === 100 ? 'stroke-emerald-400' : 'stroke-orange-300'}
+                        strokeDasharray={2 * Math.PI * 18} strokeDashoffset={2 * Math.PI * 18 * (1 - pct / 100)} />
+                    </svg>
+                  )}
+                </div>
+                <p className="mt-1 truncate text-xs/5 text-zinc-500">{note}</p>
               </div>
             ))}
-          </dl></div>
+          </div>
         )}
 
         {layout.timeline && <DayTimeline installationId={id} lanes={lanes} gaps={totals.gaps} serverNow={now.toISOString()} />}
 
-        {/* One schedule: the hero and its card already say what's next. */}
-        {layout.upNext && active.length > 1 && <UpNext installationId={id} workflows={feed} />}
+        {totals.anyDue && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* One schedule: the countdown tile and its card already say what's next. */}
+            {layout.upNext && active.length > 1 && <UpNext installationId={id} workflows={feed} />}
+            <RecentRuns installationId={id} items={items} className={layout.upNext && active.length > 1 ? '' : 'lg:col-span-2'} />
+          </div>
+        )}
+        </div>
 
         <section aria-labelledby="schedules">
           <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
