@@ -1,5 +1,5 @@
 'use client';
-import { Cog6ToothIcon, Squares2X2Icon } from '@heroicons/react/16/solid';
+import { Cog6ToothIcon, LifebuoyIcon, Squares2X2Icon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import posthog from 'posthog-js';
@@ -23,7 +23,7 @@ export function DashNav({ id, switcher, userId, login, plan, offer, used, limit,
   useEffect(() => {
     posthog.group('installation', String(id), { plan, schedules_used: used, schedule_limit: limit, at_limit: used >= limit });
   }, [id, plan, used, limit]);
-  const settings = path.endsWith('/settings');
+  const at = path.endsWith('/settings') ? 'settings' : path.endsWith('/rescue') ? 'rescue' : 'overview';
   const item = 'flex min-h-11 items-center gap-x-2.5 rounded-lg px-2.5 py-2 text-base/6 font-medium transition sm:text-sm/6 lg:min-h-0';
   const idle = 'text-zinc-400 hover:bg-white/5 hover:text-white';
   const on = 'bg-white/5 text-white';
@@ -31,16 +31,13 @@ export function DashNav({ id, switcher, userId, login, plan, offer, used, limit,
     <div className="flex h-full flex-col gap-y-6">
       {switcher}
       <ul role="list" className="space-y-0.5">
-        <li>
-          <Link href={`/dashboard/${id}`} aria-current={!settings ? 'page' : undefined} className={`${item} ${!settings ? on : idle}`}>
-            <Squares2X2Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />Overview
-          </Link>
-        </li>
-        <li>
-          <Link href={`/dashboard/${id}/settings`} aria-current={settings ? 'page' : undefined} className={`${item} ${settings ? on : idle}`}>
-            <Cog6ToothIcon aria-hidden="true" className="size-4 shrink-0 fill-current" />Settings
-          </Link>
-        </li>
+        {([['overview', '', 'Overview', Squares2X2Icon], ['rescue', '/rescue', 'Rescue', LifebuoyIcon], ['settings', '/settings', 'Settings', Cog6ToothIcon]] as const).map(([key, sub, label, Icon]) => (
+          <li key={key}>
+            <Link href={`/dashboard/${id}${sub}`} aria-current={at === key ? 'page' : undefined} className={`${item} ${at === key ? on : idle}`}>
+              <Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />{label}
+            </Link>
+          </li>
+        ))}
       </ul>
       <div className="mt-auto space-y-4">
         <div className="rounded-xl bg-white/[0.03] p-3 inset-ring inset-ring-white/10">

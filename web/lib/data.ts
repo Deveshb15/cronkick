@@ -606,7 +606,7 @@ export type RescueRow = {
 };
 
 /** Failed runs Rescue looked at, newest first, never older than the plan shows. `all` includes the ones that failed in the code. */
-export async function rescueRuns(db: pg.Pool, installationId: number, now: Date, all: boolean, limit = 200): Promise<{ rows: RescueRow[]; hidden: number }> {
+export async function rescueRuns(db: pg.Pool, installationId: number, now: Date, all: boolean, limit = 200): Promise<{ rows: RescueRow[] }> {
   const floor = await retainedFrom(db, installationId, now);
   const { rows } = await db.query(
     `SELECT x.id, x.completed_at, r.full_name, x.workflow_name, x.verdict, x.state, x.would_rerun, x.skip_reason, x.run_url, x.run_attempt,
@@ -616,10 +616,7 @@ export async function rescueRuns(db: pg.Pool, installationId: number, now: Date,
       ORDER BY x.completed_at DESC LIMIT $4`,
     [installationId, floor, all, limit],
   );
-  const hidden = all ? 0 : (await db.query(
-    `SELECT count(*)::int AS n FROM rescue_runs WHERE installation_id = $1 AND completed_at > $2 AND verdict = 'user'`, [installationId, floor])).rows[0].n;
   return {
-    hidden,
     rows: rows.map((r) => ({
       id: Number(r.id), completedAt: new Date(r.completed_at).toISOString(), repo: r.full_name, workflow: r.workflow_name, verdict: r.verdict, state: r.state,
       wouldRerun: r.would_rerun, skipReason: r.skip_reason, runUrl: r.run_url, runAttempt: r.run_attempt, retryConclusion: r.retry_conclusion,
@@ -647,4 +644,14 @@ export async function stuckRuns(db: pg.Pool, installationId: number, now: Date):
     [installationId, floor, now],
   );
   return rows.map((r) => ({ id: Number(r.id), firedAt: new Date(r.fired_at).toISOString(), repo: r.full_name, workflow: r.name, runUrl: r.run_url }));
+}
+
+/** Failed runs in the plan's window, counted by verdict; unchecked runs count under "null" so the tab totals match the list. */
+export async function rescueSummary(db: pg.Pool, installationId: number, now: Date): Promise<Record<string, number>> {
+  const floor = await retainedFrom(db, installationId, now);
+  const { rows } = await db.query(
+    `SELECT verdict, count(*)::int AS n FROM rescue_runs WHERE installation_id = $1 AND completed_at > $2 GROUP BY verdict`,
+    [installationId, floor],
+  );
+  return Object.fromEntries(rows.map((r) => [r.verdict, r.n]));
 }

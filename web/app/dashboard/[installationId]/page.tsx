@@ -1,4 +1,4 @@
-import { ChevronRightIcon } from '@heroicons/react/16/solid';
+import { ChevronRightIcon, LifebuoyIcon } from '@heroicons/react/16/solid';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
@@ -198,10 +198,11 @@ export default async function Overview({ params }: { params: Promise<{ installat
         )}
 
         {broke > 0 && (
-          <Link href={`/dashboard/${id}/rescue`} className="tile group flex items-center justify-between gap-4 p-5">
-            <div className="min-w-0">
-              <p className="text-[13px]/5 text-zinc-400">Rescue · last 7 days</p>
-              <p className="mt-1 text-base/6 font-semibold text-red-300">GitHub broke {plural(broke, 'run')} this week</p>
+          <Link href={`/dashboard/${id}/rescue`} className="tile group flex items-center gap-x-4 p-4 sm:px-5">
+            <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/5 inset-ring inset-ring-white/10"><LifebuoyIcon className="size-4 fill-zinc-300" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="text-base/6 font-medium sm:text-sm/6">GitHub broke {plural(broke, 'run')} in the last 7 days</p>
+              <p className="text-sm/6 text-zinc-400 sm:text-[0.8125rem]/5">Not your code: GitHub never gave them a runner, or one of its services failed.</p>
             </div>
             <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500 transition group-hover:translate-x-0.5 group-hover:fill-zinc-300" />
           </Link>

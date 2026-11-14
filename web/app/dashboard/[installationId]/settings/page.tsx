@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AlertEmailForm } from '@/components/alert-email-form';
-import { Button, ButtonLink } from '@/components/ui';
+import { ExclamationTriangleIcon } from '@heroicons/react/16/solid';
+import { SubmitToggle } from '@/components/submit-toggle';
+import { Button, ButtonLink, StatusDot } from '@/components/ui';
 import { canSee, requireInstallation } from '@/lib/access';
 import { billingEnabled } from '@/lib/billing';
 import { db } from '@/lib/db';
@@ -65,6 +67,11 @@ export default async function Settings({ params, searchParams }: { params: Promi
     ['Rescue', 'weekly report', 'weekly report, can re-run once'],
   ];
   const line = billingLine(billing);
+  const modes: [value: string, label: string, help: string, disabled: boolean][] = [
+    ['off', 'Off', 'Don’t check failed runs.', false],
+    ['shadow', 'Report only', 'Check failed runs and email a weekly summary. Never re-runs anything.', false],
+    ...(rerunOffered ? [['rerun', 'Re-run once', free ? `Part of ${paid.label}.` : 'Also re-run, once, a run Cronkick started that GitHub never gave a runner, on the workflows you turn on below.', free] as [string, string, string, boolean]] : []),
+  ];
   return (
     <div className={`${container} space-y-6 pt-8 pb-16 sm:pt-10`}>
       <div>
@@ -112,49 +119,69 @@ export default async function Settings({ params, searchParams }: { params: Promi
         </details>
       </section>
 
-      <section className={card}>
+      <section id="rescue" className={`${card} scroll-mt-8`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="max-w-xl">
             <h2 className="text-base/7 font-semibold">Rescue</h2>
-            <p className="text-sm/6 text-zinc-400">When a run fails, Cronkick reads its job list and tells you when GitHub’s infrastructure, not your code, broke it: a weekly email to your alert address and the Rescue page. It stores only GitHub’s own error text, never logs. <Link href="/docs/rescue" className="font-medium text-white underline decoration-white/30 hover:decoration-white">How it decides</Link></p>
+            <p className="text-base/7 text-pretty text-zinc-400 sm:text-sm/6">Finds failed runs that GitHub’s infrastructure broke, not your code, and emails a weekly summary to your alert address. It keeps GitHub’s error message, never your logs. <Link href="/docs/rescue" className="font-medium text-white underline decoration-white/30 hover:decoration-white">How it decides</Link></p>
           </div>
-          <ButtonLink href={`/dashboard/${id}/rescue`}>See runs</ButtonLink>
+          <ButtonLink href={`/dashboard/${id}/rescue`} size="sm">See runs</ButtonLink>
         </div>
-        <p className="mt-3 text-[13px]/5 text-zinc-400">
-          {rescue.checksRead
-            ? <>Checks: read approved ✓</>
-            : <>To read GitHub’s own error message on a failed job, Rescue needs the Checks: read permission. Without it, runs that never got a runner show as “probably GitHub”. <a target="_blank" rel="noreferrer" href={manageReposUrl(inst)} className="font-medium text-white underline decoration-white/30 hover:decoration-white">Approve it on GitHub ↗</a></>}
-        </p>
-        <form action={saveRescueMode.bind(null, id)} className="mt-4">
-          <fieldset className="space-y-2">
+
+        <form action={saveRescueMode.bind(null, id)} className="mt-5">
+          <fieldset>
             <legend className="sr-only">Rescue mode</legend>
-            {([
-              ['off', 'Off', 'Don’t read failed runs.', false],
-              ['shadow', 'Report only', 'Classify failed runs and email a weekly summary. Never re-runs anything.', false],
-              ...(rerunOffered ? [['rerun', 'Re-run once', free ? `Part of ${paid.label}.` : 'Also re-run, once, runs Cronkick started that GitHub never gave a runner, on the workflows you turn on below.', free]] as const : []),
-            ] as const).map(([value, label, help, disabled]) => (
-              <label key={value} className={`flex items-start gap-x-3 text-sm/6 ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
-                <input type="radio" name="mode" value={value} disabled={disabled} defaultChecked={rescue.mode === value} className="mt-1.5 accent-brand-500" />
-                <span><span className="font-medium text-white">{label}</span> <span className="text-zinc-400">· {help}</span></span>
-              </label>
-            ))}
+            <div className="divide-y divide-white/5 overflow-hidden rounded-xl inset-ring inset-ring-white/10">
+              {modes.map(([value, label, help, disabled]) => (
+                <label key={value} htmlFor={`rescue-${value}`} className="flex gap-x-3 px-4 py-3 has-checked:bg-white/[0.04] has-disabled:opacity-60 not-has-disabled:cursor-pointer">
+                  <div className="flex h-lh shrink-0 items-center text-base/6 sm:text-sm/6">
+                    <span className="group inline-grid size-5 grid-cols-1 sm:size-4">
+                      <input id={`rescue-${value}`} type="radio" name="mode" value={value} disabled={disabled} defaultChecked={rescue.mode === value}
+                        className="col-start-1 row-start-1 appearance-none rounded-full border border-white/10 bg-white/5 checked:border-brand-500 checked:bg-brand-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:border-white/5 disabled:bg-white/10 disabled:checked:bg-white/10 forced-colors:appearance-auto" />
+                      <span className="pointer-events-none col-start-1 row-start-1 size-[round(down,40%,1px)] self-center justify-self-center rounded-full bg-ink group-not-has-checked:opacity-0 group-has-disabled:bg-white/25" />
+                    </span>
+                  </div>
+                  <div className="min-w-0 text-base/6 sm:text-sm/6">
+                    <p className="font-medium text-white">{label}</p>
+                    <p className="text-zinc-400">{help}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
           </fieldset>
-          <Button type="submit" className="mt-4">Save</Button>
+          <div className="mt-3 flex justify-end"><Button type="submit" size="sm">Save mode</Button></div>
         </form>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-xl px-4 py-3 inset-ring inset-ring-white/10">
+          <div className="min-w-0 max-w-lg">
+            <p className="text-base/6 font-medium sm:text-sm/6">GitHub’s error messages</p>
+            <p className="text-sm/6 text-pretty text-zinc-400 sm:text-[0.8125rem]/5">{rescue.checksRead
+              ? 'Checks: read is approved, so Rescue can confirm when GitHub never gave a job a runner.'
+              : 'Rescue needs the Checks: read permission to read them. Without it, a job that never got a runner shows as “probably GitHub”.'}</p>
+          </div>
+          {rescue.checksRead
+            ? <p className="text-sm/6 text-zinc-300"><StatusDot dot="bg-emerald-400">Approved</StatusDot></p>
+            : <ButtonLink size="sm" target="_blank" rel="noreferrer" href={manageReposUrl(inst)}>Approve on GitHub ↗</ButtonLink>}
+        </div>
+
         {rescueFlows.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-sm/6 font-medium">Workflows Rescue may re-run</h3>
-            <p className="mt-1 text-[13px]/5 text-zinc-400">Rescue may re-run this workflow’s failed jobs and every job that depends on them, at the same commit, once. Turn this on only if every job in this workflow is safe to run twice.</p>
+          <div className="mt-8">
+            <h3 className="text-base/6 font-semibold sm:text-sm/6">Workflows Rescue may re-run</h3>
+            <p className="text-sm/6 text-zinc-400 sm:text-[0.8125rem]/5">{rescue.mode === 'rerun' ? 'Only the workflows turned on here are ever re-run.' : 'These take effect when the mode is Re-run once.'}</p>
+            <div className="mt-3 flex gap-x-3 rounded-xl bg-orange-400/5 px-4 py-3 text-base/7 text-orange-200 inset-ring inset-ring-orange-400/15 sm:text-sm/6">
+              <ExclamationTriangleIcon aria-hidden="true" className="mt-1.5 size-4 shrink-0 fill-orange-300 sm:mt-1" />
+              <p>Rescue may re-run this workflow’s failed jobs and every job that depends on them, at the same commit, once. Turn this on only if every job in this workflow is safe to run twice.</p>
+            </div>
             <ul role="list" className="mt-3 divide-y divide-white/5 rounded-xl inset-ring inset-ring-white/10">
               {rescueFlows.map((w) => (
-                <li key={w.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm/6">
+                <li key={w.id} className="flex items-start justify-between gap-x-4 px-4 py-3">
                   <div className="min-w-0">
-                    <p className="font-medium">{w.name} <span className="font-normal text-zinc-400">· {w.repo.split('/')[1]}</span></p>
-                    {w.blockers.length > 0 && <p className="text-[13px]/5 text-orange-300">{w.blockers.join(' ')}</p>}
+                    <p className="text-base/6 font-medium break-words sm:text-sm/6">{w.name} <span className="font-normal text-zinc-400">· {w.repo.split('/')[1]}</span></p>
+                    {w.blockers.length > 0 && <p className="text-sm/6 text-orange-300 sm:text-[0.8125rem]/5">Can’t be re-run: {w.blockers.join(' ')}</p>}
                   </div>
-                  {w.blockers.length && !w.on ? <span className="text-[13px]/5 text-zinc-500">Can’t be turned on</span> : (
-                    <form action={saveWorkflowRescue.bind(null, id, w.id, !w.on)}><Button type="submit" size="sm">{w.on ? 'Turn off' : 'Turn on'}</Button></form>
-                  )}
+                  <div className="flex h-lh items-center text-base/6 sm:text-sm/6">
+                    <SubmitToggle action={saveWorkflowRescue.bind(null, id, w.id, !w.on)} on={w.on} disabled={w.blockers.length > 0 && !w.on} label={`Let Rescue re-run ${w.name}`} />
+                  </div>
                 </li>
               ))}
             </ul>
