@@ -655,3 +655,21 @@ export async function rescueSummary(db: pg.Pool, installationId: number, now: Da
   );
   return Object.fromEntries(rows.map((r) => [r.verdict, r.n]));
 }
+
+export type AgentWorkflow = { id: number; name: string; path: string; agent: string; repo: string; receipt: Receipt | null; receiptAt: string | null };
+
+/** Workflows that run an agent action (src/sync.ts#agentOf), each with the last receipt one of its runs sent. */
+export async function agentWorkflows(db: pg.Pool, installationId: number): Promise<AgentWorkflow[]> {
+  const { rows } = await db.query(
+    `SELECT w.id, w.name, w.path, w.agent, r.full_name AS repo, last.receipt, last.receipt_at
+       FROM workflows w JOIN repos r ON r.id = w.repo_id
+       LEFT JOIN LATERAL (SELECT receipt, receipt_at FROM slots WHERE workflow_id = w.id AND receipt IS NOT NULL ORDER BY receipt_at DESC LIMIT 1) last ON true
+      WHERE r.installation_id = $1 AND r.active AND w.present AND w.agent IS NOT NULL
+      ORDER BY r.full_name, w.name`,
+    [installationId],
+  );
+  return rows.map((r) => ({
+    id: Number(r.id), name: r.name, path: r.path, agent: r.agent, repo: r.repo, receipt: r.receipt ?? null,
+    receiptAt: r.receipt_at ? new Date(r.receipt_at).toISOString() : null,
+  }));
+}

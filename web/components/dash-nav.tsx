@@ -1,5 +1,5 @@
 'use client';
-import { Cog6ToothIcon, LifebuoyIcon, Squares2X2Icon } from '@heroicons/react/16/solid';
+import { Cog6ToothIcon, LifebuoyIcon, SparklesIcon, Squares2X2Icon } from '@heroicons/react/16/solid';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import posthog from 'posthog-js';
@@ -10,7 +10,7 @@ type Props = { id: number; switcher: ReactNode; userId?: number; login: string; 
 
 let identifiedUserId: number | undefined;
 
-/** Sidebar: account switcher, two destinations, plan usage, and who is signed in. */
+/** Sidebar: account switcher, the pages, plan usage, and who is signed in. */
 export function DashNav({ id, switcher, userId, login, plan, offer, used, limit, floorMinutes }: Props) {
   const path = usePathname();
 
@@ -23,7 +23,7 @@ export function DashNav({ id, switcher, userId, login, plan, offer, used, limit,
   useEffect(() => {
     posthog.group('installation', String(id), { plan, schedules_used: used, schedule_limit: limit, at_limit: used >= limit });
   }, [id, plan, used, limit]);
-  const at = path.endsWith('/settings') ? 'settings' : path.endsWith('/rescue') ? 'rescue' : 'overview';
+  const at = path.endsWith('/settings') ? 'settings' : path.endsWith('/rescue') ? 'rescue' : path.endsWith('/recipes') ? 'recipes' : 'overview';
   const item = 'flex min-h-11 items-center gap-x-2.5 rounded-lg px-2.5 py-2 text-base/6 font-medium transition sm:text-sm/6 lg:min-h-0';
   const idle = 'text-zinc-400 hover:bg-white/5 hover:text-white';
   const on = 'bg-white/5 text-white';
@@ -31,7 +31,7 @@ export function DashNav({ id, switcher, userId, login, plan, offer, used, limit,
     <div className="flex h-full flex-col gap-y-6">
       {switcher}
       <ul role="list" className="space-y-0.5">
-        {([['overview', '', 'Overview', Squares2X2Icon], ['rescue', '/rescue', 'Rescue', LifebuoyIcon], ['settings', '/settings', 'Settings', Cog6ToothIcon]] as const).map(([key, sub, label, Icon]) => (
+        {([['overview', '', 'Overview', Squares2X2Icon], ['rescue', '/rescue', 'Rescue', LifebuoyIcon], ['recipes', '/recipes', 'Recipes', SparklesIcon], ['settings', '/settings', 'Settings', Cog6ToothIcon]] as const).map(([key, sub, label, Icon]) => (
           <li key={key}>
             <Link href={`/dashboard/${id}${sub}`} aria-current={at === key ? 'page' : undefined} className={`${item} ${at === key ? on : idle}`}>
               <Icon aria-hidden="true" className="size-4 shrink-0 fill-current" />{label}

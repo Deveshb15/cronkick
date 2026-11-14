@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, test } from 'vitest';
 import type { Db } from '../src/db.ts';
-import { accountHealth, activity, dailyCells, dayBounds, knownZone, exceptions, nextRuns, overview, rangeStats, recentSlots, setDismissed, slotsBetween, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
+import { accountHealth, activity, agentWorkflows, dailyCells, dayBounds, knownZone, exceptions, nextRuns, overview, rangeStats, recentSlots, setDismissed, slotsBetween, toTick, workflowHistory, workflowStatus } from '../web/lib/data.ts';
 import { VERDICT } from '../web/lib/format.ts';
 import { decodeSession, encodeSession } from '../web/lib/session.ts';
 import { freshDb, seed } from './helpers.ts';
@@ -620,4 +620,19 @@ test('workflow history: a run with a receipt carries it; one without has null', 
   await db.query('UPDATE slots SET receipt = $1, receipt_at = now() WHERE due_at = $2', [JSON.stringify(receipt), ago(30)]);
   const h = (await workflowHistory(db, 1, 100, NOW))!;
   expect(h.slots.map((s) => s.receipt)).toEqual([receipt, null]);
+});
+
+test('agent workflows: only workflows that run an agent, each with its latest receipt', async () => {
+  await seed(db);
+  await db.query(`INSERT INTO workflows (id, repo_id, path, name, agent) VALUES (101, 10, '.github/workflows/cronkick-nightly-deps.yml', 'Nightly deps', 'claude')`);
+  await slot(60, 'accepted', 1, 101);
+  await slot(30, 'accepted', 1, 101);
+  const older = { v: 1, recipe: 'nightly-deps', engine: 'claude', outcome: 'noop', turns: 3 };
+  const latest = { v: 1, recipe: 'nightly-deps', engine: 'claude', outcome: 'pr', url: 'https://github.com/acme/app/pull/7', turns: 22, cost_usd: 0.84 };
+  await db.query(`UPDATE slots SET receipt = $1, receipt_at = now() - interval '1 hour' WHERE due_at = $2`, [JSON.stringify(older), ago(60)]);
+  await db.query('UPDATE slots SET receipt = $1, receipt_at = now() WHERE due_at = $2', [JSON.stringify(latest), ago(30)]);
+  const [w, ...rest] = await agentWorkflows(db, 1);
+  expect(rest).toEqual([]); // workflow 100 runs no agent
+  expect(w).toMatchObject({ id: 101, name: 'Nightly deps', agent: 'claude', repo: 'acme/app', receipt: latest });
+  expect(await agentWorkflows(db, 2)).toEqual([]);
 });

@@ -1,4 +1,7 @@
-import type { Engine } from '../../src/recipes.ts';
+import { CheckCircleIcon, ClockIcon } from '@heroicons/react/16/solid';
+import Link from 'next/link';
+import { humanCron } from '@/lib/live';
+import type { Engine, Recipe } from '../../src/recipes.ts';
 import { CopyButton } from './docs-nav';
 import { Badge } from './ui';
 
@@ -6,6 +9,26 @@ export const ENGINE: Record<Engine, string> = { claude: 'Claude Code', codex: 'C
 
 export function EngineBadge({ engine }: { engine: Engine }) {
   return <Badge>{ENGINE[engine]}</Badge>;
+}
+
+/** One recipe as a whole-card link to its page; `added` names where it already runs (the dashboard). */
+export function RecipeCard({ r, added }: { r: Recipe; added?: string }) {
+  return (
+    <Link href={`/recipes/${r.slug}`} className="group flex h-full flex-col rounded-2xl bg-zinc-900/50 p-6 inset-ring inset-ring-white/10 hover:bg-zinc-900/80 hover:inset-ring-white/20">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <EngineBadge engine={r.engine} />
+        <p className="flex items-center gap-x-1.5 text-sm/6 text-zinc-400">
+          <ClockIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500" />{humanCron(r.defaultCron)} {r.defaultTz}
+        </p>
+      </div>
+      <h3 className="mt-5 text-lg/7 font-semibold text-white group-hover:text-brand-300 sm:text-base/7">{r.title}</h3>
+      <p className="mt-2 flex-1 text-base/7 text-pretty text-zinc-400 sm:text-sm/6">{r.blurb}</p>
+      <p className="mt-6 flex items-center justify-between gap-x-4 border-t border-white/5 pt-4 text-base/6 text-zinc-300 sm:text-sm/6">
+        {added ? <span className="flex min-w-0 items-center gap-x-1.5 text-emerald-300"><CheckCircleIcon aria-hidden="true" className="size-4 shrink-0 fill-current" /><span className="truncate">{added}</span></span> : r.output}
+        <span aria-hidden="true" className="text-zinc-500 group-hover:text-white">→</span>
+      </p>
+    </Link>
+  );
 }
 
 /** The four steps every recipe run takes, numbered like the home page's "How it works". */

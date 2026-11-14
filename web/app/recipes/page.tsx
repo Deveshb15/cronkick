@@ -1,12 +1,10 @@
-import { ClockIcon } from '@heroicons/react/16/solid';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { EngineBadge, RunSteps } from '@/components/recipes';
+import { RecipeCard, RunSteps } from '@/components/recipes';
 import { SplitHeading } from '@/components/section';
 import { container, SiteFooter, SiteHeader } from '@/components/site';
 import { Eyebrow } from '@/components/ui';
 import { appSlug } from '@/lib/format';
-import { humanCron } from '@/lib/live';
 import { RECIPES } from '../../../src/recipes.ts';
 
 export const metadata: Metadata = {
@@ -31,29 +29,15 @@ export default function Recipes() {
 
         <section className="pb-24 sm:pb-32">
           <div className={container}>
+            <h2 className="sr-only">Recipes</h2>
             <ul role="list" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {RECIPES.map((r) => (
-                <li key={r.slug}>
-                  <Link href={`/recipes/${r.slug}`} className="group flex h-full flex-col rounded-2xl bg-zinc-900/50 p-6 inset-ring inset-ring-white/10 hover:bg-zinc-900/80 hover:inset-ring-white/20">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <EngineBadge engine={r.engine} />
-                      <p className="flex items-center gap-x-1.5 text-sm/6 text-zinc-400">
-                        <ClockIcon aria-hidden="true" className="size-4 shrink-0 fill-zinc-500" />{humanCron(r.defaultCron)} {r.defaultTz}
-                      </p>
-                    </div>
-                    <h2 className="mt-5 text-lg/7 font-semibold text-white group-hover:text-brand-300 sm:text-base/7">{r.title}</h2>
-                    <p className="mt-2 flex-1 text-base/7 text-pretty text-zinc-400 sm:text-sm/6">{r.blurb}</p>
-                    <p className="mt-6 flex items-center justify-between gap-x-4 border-t border-white/5 pt-4 text-base/6 text-zinc-300 sm:text-sm/6">
-                      {r.output}
-                      <span aria-hidden="true" className="text-zinc-500 group-hover:text-white">→</span>
-                    </p>
-                  </Link>
-                </li>
+                <li key={r.slug}><RecipeCard r={r} /></li>
               ))}
               <li>
                 <Link href="/docs/migrate" className="group flex h-full flex-col rounded-2xl p-6 outline-1 -outline-offset-1 outline-white/15 outline-dashed hover:bg-white/[0.02] hover:outline-white/30">
                   <p className="text-base/6 font-medium text-zinc-400 sm:text-sm/6">Bring your own</p>
-                  <h2 className="mt-5 text-lg/7 font-semibold text-white group-hover:text-brand-300 sm:text-base/7">Already run an agent on <span className="font-mono">schedule:</span>?</h2>
+                  <h3 className="mt-5 text-lg/7 font-semibold text-white group-hover:text-brand-300 sm:text-base/7">Already run an agent on <span className="font-mono">schedule:</span>?</h3>
                   <p className="mt-2 flex-1 text-base/7 text-pretty text-zinc-400 sm:text-sm/6">Swap the schedule for one marker line and Cronkick fires the workflow you already have, on time. Add <span className="font-mono text-zinc-300">{appSlug()}</span> to the agent action’s allowed bots.</p>
                   <p className="mt-6 flex items-center justify-between gap-x-4 border-t border-white/5 pt-4 text-base/6 text-zinc-300 sm:text-sm/6">
                     Moving from schedule:
