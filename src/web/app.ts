@@ -23,10 +23,14 @@ export function webApp(deps: Deps, opts: { webhookSecret: string; billing: Billi
       `SELECT (SELECT count(*)::int FROM slots WHERE state = 'pending' AND next_attempt_at < $1::timestamptz - interval '2 minutes') AS waiting,
               (SELECT count(*)::int FROM slots WHERE state = 'dispatching' AND lease_until < $1::timestamptz - interval '3 minutes') AS stranded,
               (SELECT planned_until IS NULL OR planned_until < $1::timestamptz + interval '115 minutes' FROM planner) AS stale -- 2 h horizon less 5 min`, [deps.now()]);
-    if (r.stale) return c.text('planner stalled: slots are not being planned ahead', 503);
-    if (r.stranded) return c.text(`dispatch stuck: ${r.stranded} lease${r.stranded === 1 ? '' : 's'} expired over 3 min ago`, 503);
     const n = r.waiting as number;
-    return n ? c.text(`dispatch lagging: ${n} slot${n === 1 ? '' : 's'} waiting over 2 min`, 503) : c.text('ok');
+    const problem = r.stale ? 'planner stalled: slots are not being planned ahead'
+      : r.stranded ? `dispatch stuck: ${r.stranded} lease${r.stranded === 1 ? '' : 's'} expired over 3 min ago`
+      : n ? `dispatch lagging: ${n} slot${n === 1 ? '' : 's'} waiting over 2 min` : null;
+    if (!problem) return c.text('ok');
+    // Logged so an uptime alert can be told apart from a probe-side network blip (no line = the app was fine).
+    console.warn(`healthz/dispatch 503: ${problem}`);
+    return c.text(problem, 503);
   });
 
   app.post('/webhooks', async (c) => {
