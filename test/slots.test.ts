@@ -41,6 +41,9 @@ test('jitter: stable, only at :00, at most 15 s', () => {
   expect(jitterMs(42, top)).toBe(jitterMs(42, top));
   expect(jitterMs(42, at('2026-11-10T03:17:00Z'))).toBe(0);
   for (let id = 1; id < 500; id++) expect(jitterMs(id, top)).toBeLessThanOrEqual(15_000);
+  // Real GitHub workflow ids are ~4e8; they must spread out, not all land on 0.
+  const real = new Set(Array.from({ length: 50 }, (_, i) => jitterMs(414_690_424 + i, top)));
+  expect(real.size).toBeGreaterThan(5);
   const [s] = planSlots(42, [utc('0 * * * *')], at('2026-11-10T02:30:00Z'), at('2026-11-10T03:30:00Z'));
   expect(s.fireAt.getTime() - s.dueAt.getTime()).toBe(jitterMs(42, top));
 });

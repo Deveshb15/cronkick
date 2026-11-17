@@ -20,7 +20,10 @@ export function webApp(deps: Deps, opts: { webhookSecret: string; billing: Billi
   // (Not used by the load balancer, or one lagging minute would take the whole site offline.)
   app.get('/healthz/dispatch', async (c) => {
     const { rows: [r] } = await deps.db.query(
-      `SELECT (SELECT count(*)::int FROM slots WHERE state = 'pending' AND next_attempt_at < $1::timestamptz - interval '2 minutes') AS waiting,
+      // `waiting` uses claim()'s filter: a slot of a paused repo or suspended install is never sent, so it isn't lag.
+      `SELECT (SELECT count(*)::int FROM slots s JOIN repos r ON r.id = s.repo_id JOIN installations i ON i.id = s.installation_id
+                WHERE s.state = 'pending' AND s.next_attempt_at < $1::timestamptz - interval '2 minutes'
+                  AND r.active AND NOT i.removed AND NOT i.suspended) AS waiting,
               (SELECT count(*)::int FROM slots WHERE state = 'dispatching' AND lease_until < $1::timestamptz - interval '3 minutes') AS stranded,
               (SELECT planned_until IS NULL OR planned_until < $1::timestamptz + interval '115 minutes' FROM planner) AS stale -- 2 h horizon less 5 min`, [deps.now()]);
     const n = r.waiting as number;

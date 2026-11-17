@@ -43,6 +43,9 @@ test('healthz/dispatch fails when due slots wait more than 2 minutes, so the upt
   const res = await app().request('/healthz/dispatch');
   expect(res.status).toBe(503);
   expect(await res.text()).toMatch(/1 slot/);
+  // The dispatcher never sends a suspended installation's slots, so they don't count as lag.
+  await db.query('UPDATE installations SET suspended = true WHERE id = 1');
+  expect((await app().request('/healthz/dispatch')).status).toBe(200);
 });
 
 test('healthz/dispatch fails when the planner stops advancing or a lease is stranded', async () => {

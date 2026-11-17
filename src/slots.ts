@@ -43,7 +43,8 @@ export function minIntervalMinutes(scheds: Sched[], from = new Date()): number {
 /** Fixed 0–15 s offset per workflow, applied only to slots at :00 to spread the top-of-hour peak. */
 export function jitterMs(workflowId: number, due: Date): number {
   if (due.getUTCMinutes() !== 0 || due.getUTCSeconds() !== 0) return 0;
-  return ((workflowId * 2654435761) % 2 ** 32) % (MAX_JITTER_S + 1) * 1000;
+  // Math.imul: a plain `*` loses the low bits once ids pass ~3M, which made every real workflow's jitter 0.
+  return ((Math.imul(workflowId, 2654435761) >>> 0) % (MAX_JITTER_S + 1)) * 1000;
 }
 
 export type SlotPlan = { dueAt: Date; fireAt: Date; deadlineAt: Date };
